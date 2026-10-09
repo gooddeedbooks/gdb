@@ -1,0 +1,175 @@
+﻿using Microsoft.AspNetCore.Mvc;
+using Dto.Inventory;
+using Dto.Purchasing;
+using Dto.Sales;
+using Services.Administration;
+using Services.Inventory;
+using Services.Purchasing;
+using Services.Sales;
+using System.Collections.Generic;
+using Services.Financial;
+using Dto.Financial;
+using System.Linq;
+using System;
+using Core.Domain;
+
+namespace Api.Controllers
+{
+    [Route("api/[controller]")]
+    public class CommonController : BaseController
+    {
+        private readonly ISalesService _salesService;
+        private readonly IAdministrationService _administrationService;
+        private readonly IInventoryService _inventoryService;
+        private readonly IPurchasingService _purchasingService;
+        private readonly IFinancialService _financialService;
+
+        public CommonController(ISalesService salesService,
+            IAdministrationService administrationService,
+            IInventoryService inventoryService,
+            IPurchasingService purchasingService,
+            IFinancialService financialService)
+        {
+            _salesService = salesService;
+            _administrationService = administrationService;
+            _inventoryService = inventoryService;
+            _purchasingService = purchasingService;
+            _financialService = financialService;
+        }
+
+        [HttpGet]
+        [Route("Customers")] // api/Common/Customers
+        public IActionResult Customers()
+        {
+            var customers = _salesService.GetCustomers();
+
+            ICollection<Customer> customersDto = new HashSet<Customer>();
+
+            foreach (var customer in customers)
+            {
+                if (customer.Party != null)
+                    customersDto.Add(new Customer() { Id = customer.Id, Name = customer.Party.Name, PaymentTermId = customer.PaymentTermId });
+            }
+
+            return new ObjectResult(customersDto);
+        }
+
+        [HttpGet]
+        [Route("PaymentTerms")] // api/Common/PaymentTerms
+        public IActionResult PaymentTerms()
+        {
+            var paymentterms = _administrationService.GetPaymentTerms();
+            return new ObjectResult(paymentterms);
+        }
+
+        [HttpGet]
+        [Route("Items")] // api/Common/Items
+        public IActionResult Items()
+        {
+            var items = _inventoryService.GetAllItems().OrderBy(i => i.Description);
+            ICollection<Item> itemsDto = new HashSet<Item>();
+
+            foreach (var item in items)
+                itemsDto.Add(new Item() { Id = item.Id, Description = item.Description, Code = item.Code, Price = item.Price, SellMeasurementId = item.SellMeasurementId });
+
+            return new ObjectResult(itemsDto);
+        }
+
+        [HttpGet]
+        [Route("Measurements")] // api/Common/Measurements
+        public IActionResult Measurements()
+        {
+            return new ObjectResult(_inventoryService.GetMeasurements().OrderBy(m => m.Description));
+        }
+
+        [HttpGet]
+        [Route("Vendors")] // api/Common/Vendors
+        public IActionResult Vendors()
+        {
+            var vendors = _purchasingService.GetVendors();
+            ICollection<Vendor> vendorsDto = new HashSet<Vendor>();
+
+            foreach (var vendor in vendors)
+            {
+                if (vendor.Party != null)
+                    vendorsDto.Add(new Vendor() { Id = vendor.Id, Name = vendor.Party.Name, PaymentTermId = vendor.PaymentTermId });
+            }
+
+            return new ObjectResult(vendorsDto);
+        }
+
+        [HttpGet]
+        [Route("ItemCategories")] // api/Common/ItemCategories
+        public IActionResult ItemCategories()
+        {
+            var itemcategories = _inventoryService.GetItemCategories();
+            return Ok(itemcategories.AsEnumerable());
+        }
+
+        [HttpGet]
+        [Route("CashBanks")] // api/Common/CashBanks
+        public IActionResult CashBanks()
+        {
+            var banks = _financialService.GetCashAndBanks();
+            ICollection<Bank> cashbanksDto = new HashSet<Bank>();
+
+            foreach (var bank in banks)
+                cashbanksDto.Add(new Bank() { Id = bank.Id, Name = bank.Name });
+
+            return Ok(cashbanksDto);
+        }
+
+        [HttpGet]
+        [Route("PostingAccounts")] // api/Common/PostingAccounts
+        public IActionResult PostingAccounts()
+        {
+            var accounts = _financialService.GetAccounts()
+                .Where(a => a.ChildAccounts.Count == 0)
+                .OrderBy(a => a.AccountName);
+
+            ICollection<Account> accountsDto = new HashSet<Account>();
+
+            foreach (var account in accounts)
+                accountsDto.Add(new Account() { Id = account.Id, AccountCode = account.AccountCode, AccountName = account.AccountName });
+
+            return Ok(accountsDto);
+        }
+
+        [HttpGet]
+        [Route("SalesQuotationStatus")] // api/Common/SalesQuotationStatus
+        public IActionResult SalesQuotationStatus()
+        {
+
+            List<int> quoteStatuses = new List<int>(new int[] { 0, 1, 3 });
+
+            var salesQuotationsDto = new List<Dto.Common.Status>();
+            foreach (var item in Enum.GetValues(typeof(SalesQuoteStatus)))
+            {
+                if (quoteStatuses.Contains((int)item))
+                {
+                    salesQuotationsDto.Add(new Dto.Common.Status { Id = (int)item, Description = Enum.GetName(typeof(SalesQuoteStatus), item) });
+                }
+
+            }
+            return Json(salesQuotationsDto);
+
+        }
+
+        [HttpGet]
+        [Route("PaymentMethods")] // api/Common/PaymentMethods
+        public IActionResult PaymentMethods()
+        {
+            var paymentMethods = new List<Dto.Common.Status>
+            {
+                new Dto.Common.Status { Id = 1, Description = "Check" },
+                new Dto.Common.Status { Id = 2, Description = "E-Transfer" },
+                new Dto.Common.Status { Id = 3, Description = "Cash" },
+                new Dto.Common.Status { Id = 4, Description = "Credit Card" },
+                new Dto.Common.Status { Id = 5, Description = "Other" }
+            };
+
+            return Json(paymentMethods);
+        }
+
+    }
+}

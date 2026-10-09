@@ -1,0 +1,12 @@
+label,
+span,
+.payment-form-row label,
+.form-group label,
+strong,
+p {
+    color: inherit;
+}
+
+.card-header strong {
+    font-weight: 700;
+}

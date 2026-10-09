@@ -1,0 +1,34 @@
+version: "3"
+services: 
+    api:
+        image: accountgo/accountgoapi
+        build:
+            dockerfile: ./src/Api/Dockerfile
+            context: .
+        ports:
+            - "8001:8001"
+        environment:
+            - ASPNETCORE_URLS=http://+:8001
+    web:
+        image: accountgo/accountgoweb
+        build: 
+            dockerfile: ./src/AccountGoWeb/Dockerfile
+            context: .
+        ports:
+            - "8000:8000"
+        environment:
+            - ASPNETCORE_URLS=http://+:8000
+            - APIHOST=api
+    sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        container_name: gdb-sql-server
+        environment:
+            - ACCEPT_EULA=Y
+            - MSSQL_SA_PASSWORD=YourStrong!Passw0rd
+        ports:
+            - "1433:1433"
+        volumes:
+            - sqlserver_data:/var/opt/mssql
+
+volumes:
+    sqlserver_data:

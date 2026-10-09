@@ -1,0 +1,734 @@
+﻿using Dto.Financial;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Services.Administration;
+using Services.Financial;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Api.Controllers
+{
+    [Route("api/[controller]")]
+    //[Authorize]
+    public class FinancialsController : BaseController
+    {
+        private readonly IAdministrationService _adminService;
+        private readonly IFinancialService _financialService;
+        private readonly IAccountService _accountService;
+
+        public FinancialsController(IAdministrationService adminService,
+            IFinancialService financialService, IAccountService accountService)
+        {
+            _adminService = adminService;
+            _financialService = financialService;
+            _accountService = accountService;
+        }
+
+        [HttpGet]
+        [Route("CashBanks")] // api/Financials/CashBanks
+        public IActionResult CashBanks()
+        {
+            var cashAndBanks = _financialService.GetCashAndBanks();
+            var cashAndBanksDto = new List<Bank>();
+
+            foreach (var bank in cashAndBanks)
+            {
+                cashAndBanksDto.Add(new Bank()
+                {
+                    Id = bank.Id,
+                    Name = bank.Name,
+                    AccountNo = bank.Number,
+                    BankName = bank.BankName,
+                    AccountId = bank.AccountId
+                });
+            }
+
+            return new ObjectResult(cashAndBanksDto);
+        }
+
+        [HttpGet]
+        [Route("Accounts")] // api/Financials/Accounts
+        public IActionResult Accounts()
+        {
+            var accounts = _financialService.GetAccounts().ToList();
+
+            var accountTree = BuildAccountGrouping(accounts, null);
+
+            return new ObjectResult(accountTree);
+        }
+
+        [HttpGet]
+        [Route("Account")]
+        public IActionResult Account(int id)
+        {
+            var account = _financialService.GetAccount(id);
+
+            var accountDto = new Dto.Financial.Account()
+            {
+                Id = account.Id,
+                AccountClassId = account.AccountClassId,
+                ParentAccountId = account.ParentAccountId,
+                CompanyId = account.CompanyId,
+                AccountCode = account.AccountCode,
+                AccountName = account.AccountName,
+                Description = account.Description,
+                IsCash = account.IsCash,
+                IsContraAccount = account.IsContraAccount,
+                Balance = account.Balance,
+                DebitBalance = account.DebitBalance,
+                CreditBalance = account.CreditBalance
+            };
+
+            return new ObjectResult(accountDto);
+        }
+
+
+        [HttpGet]
+        [Route("JournalEntries")] // api/Financials/JournalEntries
+        public IActionResult JournalEntries()
+        {
+            var journalEntries = _financialService.GetJournalEntries();
+            var journalEntriesDto = new List<JournalEntry>();
+
+            foreach (var je in journalEntries)
+            {
+                var journalEntryDto = new JournalEntry()
+                {
+                    Id = je.Id,
+                    JournalDate = je.Date,
+                    Memo = je.Memo,
+                    ReferenceNo = je.ReferenceNo,
+                    VoucherType = (int)je.VoucherType.GetValueOrDefault(),
+                    Posted = je.Posted
+                };
+
+                foreach (var line in je.JournalEntryLines)
+                {
+                    var lineDto = new JournalEntryLine()
+                    {
+                        Id = line.Id,
+                        AccountId = line.AccountId,
+                        Amount = line.Amount,
+                        DrCr = (int)line.DrCr,
+                        Memo = line.Memo
+                    };
+
+                    journalEntryDto.JournalEntryLines.Add(lineDto);
+                }
+
+                journalEntriesDto.Add(journalEntryDto);
+            }
+
+            return new ObjectResult(journalEntriesDto);
+        }
+
+        [HttpGet]
+        [Route("JournalEntry")]
+        public IActionResult JournalEntry(int id)
+        {
+            var je = _financialService.GetJournalEntry(id);
+
+            var journalEntryDto = new JournalEntry()
+            {
+                Id = je.Id,
+                JournalDate = je.Date,
+                Memo = je.Memo,
+                ReferenceNo = je.ReferenceNo,
+                VoucherType = (int)je.VoucherType.GetValueOrDefault(),
+                Posted = je.Posted
+            };
+
+            foreach (var line in je.JournalEntryLines)
+            {
+                var lineDto = new JournalEntryLine()
+                {
+                    Id = line.Id,
+                    AccountId = line.AccountId,
+                    Amount = line.Amount,
+                    DrCr = (int)line.DrCr,
+                    Memo = line.Memo
+                };
+
+                journalEntryDto.JournalEntryLines.Add(lineDto);
+            }
+
+            // is this journal entry ready for posting?
+            if (!journalEntryDto.Posted.GetValueOrDefault()
+                && journalEntryDto.JournalEntryLines.Count >= 2
+                && (journalEntryDto.debitAmount == journalEntryDto.creditAmount))
+            {
+                journalEntryDto.ReadyForPosting = true;
+            }
+
+            return new ObjectResult(journalEntryDto);
+        }
+
+        [HttpPost]
+        [Route("PostJournalEntry")]
+        public IActionResult PostJournalEntry([FromBody] JournalEntry journalEntryDto)
+        {
+            string[]? errors = null;
+
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    errors = new string[ModelState.ErrorCount];
+                    foreach (var val in ModelState.Values)
+                        for (int i = 0; i < ModelState.ErrorCount; i++)
+                            errors[i] = val.Errors[i].ErrorMessage;
+
+                    return new BadRequestObjectResult(errors);
+                }
+
+                var je = _financialService.GetJournalEntry(journalEntryDto.Id, false);
+
+                _financialService.UpdateJournalEntry(je, true);
+
+                return new OkObjectResult(Ok());
+            }
+            catch (Exception ex)
+            {
+                errors = new string[1] { ex.InnerException != null ? ex.InnerException.Message : ex.Message };
+                return new BadRequestObjectResult(errors);
+            }
+        }
+
+        [HttpPost]
+        [Route("SaveJournalEntry")]
+        public IActionResult SaveJournalEntry([FromBody] JournalEntry journalEntryDto)
+        {
+            string[]? errors = null;
+
+            try
+            {
+                if (!ModelState.IsValid)
+                {
+                    errors = new string[ModelState.ErrorCount];
+                    int idx = 0;
+
+                    foreach (var val in ModelState.Values)
+                    {
+                        foreach (var err in val.Errors)
+                        {
+                            if (idx < errors.Length)
+                            {
+                                errors[idx++] = err.ErrorMessage;
+                            }
+                        }
+                    }
+
+                    return new BadRequestObjectResult(errors);
+                }
+
+                var anyDuplicate = journalEntryDto.JournalEntryLines.GroupBy(x => x.AccountId).Any(g => g.Count() > 1);
+                if (anyDuplicate)
+                    throw new Exception("One or more journal entry lines has duplicate account.");
+
+                bool isNew = journalEntryDto.Id == 0;
+                Core.Domain.Financials.JournalEntryHeader? journalEntry = null;
+
+                if (isNew)
+                {
+                    journalEntry = new Core.Domain.Financials.JournalEntryHeader();
+                }
+                else
+                {
+                    journalEntry = _financialService.GetJournalEntry(journalEntryDto.Id, false);
+                    if (journalEntry == null)
+                        throw new Exception("Journal entry not found.");
+
+                    var dtoLineIds = journalEntryDto.JournalEntryLines
+                        .Where(l => l.Id != 0)
+                        .Select(l => l.Id)
+                        .ToHashSet();
+
+                    var linesToRemove = journalEntry.JournalEntryLines
+                        .Where(l => l.Id != 0 && !dtoLineIds.Contains(l.Id))
+                        .ToList();
+
+                    foreach (var lineToRemove in linesToRemove)
+                    {
+                        journalEntry.JournalEntryLines.Remove(lineToRemove);
+                    }
+                }
+
+                journalEntry.Date = journalEntryDto.JournalDate;
+                journalEntry.VoucherType = (Core.Domain.JournalVoucherTypes)journalEntryDto.VoucherType.GetValueOrDefault();
+                journalEntry.ReferenceNo = journalEntryDto.ReferenceNo;
+                journalEntry.Memo = journalEntryDto.Memo;
+
+                foreach (var line in journalEntryDto.JournalEntryLines)
+                {
+                    if (!isNew)
+                    {
+                        var existingLine = journalEntry.JournalEntryLines
+                            .Where(j => j.Id == line.Id && line.Id != 0)
+                            .FirstOrDefault();
+
+                        if (existingLine != null)
+                        {
+                            existingLine.AccountId = line.AccountId.GetValueOrDefault();
+                            existingLine.DrCr = (Core.Domain.DrOrCrSide)line.DrCr;
+                            existingLine.Amount = line.Amount.GetValueOrDefault();
+                            existingLine.Memo = line.Memo;
+                        }
+                        else
+                        {
+                            var journalLine = new Core.Domain.Financials.JournalEntryLine();
+                            journalLine.AccountId = line.AccountId.GetValueOrDefault();
+                            journalLine.DrCr = (Core.Domain.DrOrCrSide)line.DrCr;
+                            journalLine.Amount = line.Amount.GetValueOrDefault();
+                            journalLine.Memo = line.Memo;
+                            journalEntry.JournalEntryLines.Add(journalLine);
+                        }
+                    }
+                    else
+                    {
+                        var journalLine = new Core.Domain.Financials.JournalEntryLine();
+                        journalLine.AccountId = line.AccountId.GetValueOrDefault();
+                        journalLine.DrCr = (Core.Domain.DrOrCrSide)line.DrCr;
+                        journalLine.Amount = line.Amount.GetValueOrDefault();
+                        journalLine.Memo = line.Memo;
+                        journalEntry.JournalEntryLines.Add(journalLine);
+                    }
+                }
+
+                if (isNew)
+                {
+                    _financialService.AddJournalEntry(journalEntry);
+                }
+                else
+                {
+                    _financialService.UpdateJournalEntry(journalEntry, false);
+                }
+
+                return new OkObjectResult(Ok());
+            }
+            catch (Exception ex)
+            {
+                errors = new string[1] { ex.InnerException != null ? ex.InnerException.Message : ex.Message };
+                return new BadRequestObjectResult(errors);
+            }
+        }
+
+        [HttpGet]
+        [Route("GeneralLedger")]
+        public ActionResult GeneralLedger(DateTime? from = default(DateTime?),
+            DateTime? to = default(DateTime?),
+            string? accountCode = null,
+            int? transactionNo = null)
+        {
+            var Dto = _financialService.MasterGeneralLedger(from, to, accountCode, transactionNo);
+
+            //goi
+            var generalLedgerTree = BuildMasterGeneralLedger(Dto);
+
+            return new ObjectResult(generalLedgerTree);
+
+        }
+
+        [HttpGet]
+        [Route("trialbalance")]
+        public ActionResult TrialBalance()
+        {
+            var Dto = _financialService.TrialBalance();
+            return new ObjectResult(Dto);
+        }
+
+        [HttpGet]
+        [Route("BalanceSheet")]
+        // TODO: this generates an error a.ContraAccounts' is invalid inside an 'Include' operation
+        public ActionResult BalanceSheet()
+        {
+            var Dto = _financialService.BalanceSheet().ToList();
+            var dt = Helpers.CollectionHelper.ConvertTo<BalanceSheet>(Dto);
+            var incomestatement = _financialService.IncomeStatement();
+            var netincome = incomestatement.Where(a => a.IsExpense == false).Sum(a => a.Amount) - incomestatement.Where(a => a.IsExpense == true).Sum(a => a.Amount);
+
+            // TODO: Add logic to get the correct account for accumulated profit/loss. Currently, the account code is hard-coded here.
+            // Solution 1: Add two columns in general ledger setting for the account id of accumulated profit and loss.
+            // Solution 2: Add column to Account table to flag if account is net income (profit and loss)
+            //if (netincome < 0)
+            //{
+            //    var loss = Dto.Where(a => a.AccountCode == "30500").FirstOrDefault();
+            //    loss.Amount = netincome;
+            //}
+            //else
+            //{
+            //    var profit = Dto.Where(a => a.AccountCode == "30400").FirstOrDefault();
+            //    profit.Amount = netincome;
+            //}
+
+            return new ObjectResult(Dto);
+        }
+
+        [HttpGet]
+        [Route("IncomeStatement")]
+        public IActionResult IncomeStatement()
+        {
+            try
+            {
+                var incomeStatementData = _financialService.IncomeStatement();
+
+                // Ensure the data is not null
+                if (incomeStatementData == null)
+                {
+                    incomeStatementData = new List<IncomeStatement>();
+                }
+
+                return Ok(incomeStatementData);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = "Error fetching income statement", details = ex.Message });
+            }
+        }
+
+        #region CRUD for Accounts
+
+        [HttpGet]
+        [Route("GetAccount/{accountCode}")]
+        public async Task<IActionResult> GetAccountByCode(string accountCode)
+        {
+            var account = await _accountService.GetAccountByCodeAsync(accountCode);
+            if (account == null)
+                return NotFound();
+
+            // Return a DTO without accessing computed properties that require navigation properties
+            // These computed properties would cause NullReferenceException if navigation properties aren't loaded
+            return Ok(new Account
+            {
+                AccountCode = account.AccountCode,
+                AccountName = account.AccountName,
+                Balance = 0, // Computed property - would require AccountClass and GeneralLedgerLines to be loaded
+                DebitBalance = 0, // Computed property - would require GeneralLedgerLines to be loaded
+                CreditBalance = 0 // Computed property - would require GeneralLedgerLines to be loaded
+            });
+        }
+
+        [HttpPost]
+        [Route("AddAccount")]
+        public async Task<IActionResult> AddAccount([FromBody] Account newAccountDto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var newAccount = new Core.Domain.Financials.Account
+            {
+                AccountCode = newAccountDto.AccountCode,
+                AccountName = newAccountDto.AccountName,
+                ParentAccountId = newAccountDto.ParentAccountId
+                // Balance = 0, // Initialize read-only fields
+                // DebitBalance = 0,
+                // CreditBalance = 0
+            };
+
+            Core.Domain.Financials.Account createdAccount;
+            try
+            {
+                createdAccount = await _accountService.AddAccountAsync(newAccount);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(new { message = ex.Message });
+            }
+
+            // Return a DTO instead of the domain object to avoid serialization issues with computed properties
+            var accountDto = new Account
+            {
+                AccountCode = createdAccount.AccountCode,
+                AccountName = createdAccount.AccountName,
+                Balance = 0, // These would require navigation properties to be loaded
+                DebitBalance = 0,
+                CreditBalance = 0
+            };
+
+            return CreatedAtAction(nameof(GetAccountByCode), new { accountCode = createdAccount.AccountCode }, accountDto);
+        }
+
+        [HttpPut]
+        [Route("UpdateAccount/{accountCode}")]
+        public async Task<IActionResult> UpdateAccount(string accountCode, [FromBody] Account updatedAccountDto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            Core.Domain.Financials.Account? updatedAccount;
+            try
+            {
+                updatedAccount = await _accountService.UpdateAccountAsync(accountCode, new Core.Domain.Financials.Account
+                {
+                    AccountCode = updatedAccountDto.AccountCode,
+                    AccountName = updatedAccountDto.AccountName,
+                    // Balance = updatedAccountDto.Balance,
+                    // DebitBalance = updatedAccountDto.DebitBalance,
+                    // CreditBalance = updatedAccountDto.CreditBalance
+                });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(new { message = ex.Message });
+            }
+            if (updatedAccount == null)
+                return NotFound();
+
+            // Return a DTO instead of the domain object to avoid serialization issues with computed properties
+            // that require navigation properties to be loaded
+            return Ok(new Account
+            {
+                AccountCode = updatedAccount.AccountCode,
+                AccountName = updatedAccount.AccountName,
+                Balance = 0, // These would require navigation properties to be loaded
+                DebitBalance = 0,
+                CreditBalance = 0
+            });
+        }
+
+        [HttpDelete]
+        [Route("DeleteAccount/{accountCode}")]
+        public async Task<IActionResult> DeleteAccount(string accountCode)
+        {
+            var (account, errorMessage) = await _accountService.DeleteAccountAsync(accountCode);
+
+            if (account == null)
+            {
+                if (errorMessage == "Account not found")
+                    return NotFound(errorMessage);
+                else
+                    return BadRequest(errorMessage);
+            }
+
+            // Return NoContent (204) for successful DELETE operations
+            // This is the standard HTTP response for DELETE operations
+            return NoContent();
+        }
+
+        #endregion
+
+        #region 
+        private IList<Dto.Financial.Account> BuildAccountGrouping(IList<Core.Domain.Financials.Account> allAccounts,
+        int? parentAccountId)
+        {
+            var accountTree = new List<Dto.Financial.Account>();
+            var childAccounts = allAccounts.Where(o => o.ParentAccountId == parentAccountId).ToList();
+
+            foreach (var account in childAccounts)
+            {
+                var accountDto = new Dto.Financial.Account()
+                {
+                    Id = account.Id,
+                    AccountClassId = account.AccountClassId,
+                    ParentAccountId = account.ParentAccountId,
+                    CompanyId = account.CompanyId,
+                    AccountCode = account.AccountCode,
+                    AccountName = account.AccountName,
+                    Description = account.Description,
+                    IsCash = account.IsCash,
+                    IsContraAccount = account.IsContraAccount,
+                    Balance = account.Balance,
+                    DebitBalance = account.DebitBalance,
+                    CreditBalance = account.CreditBalance
+                };
+                var children = BuildAccountGrouping(allAccounts, account.Id);
+                accountDto.ChildAccounts = children;
+                accountTree.Add(accountDto);
+            }
+
+            return accountTree;
+        }
+
+
+        private IList<Dto.Financial.MasterGeneralLedger> BuildMasterGeneralLedger(ICollection<Services.Financial.MasterGeneralLedger> allLedger)
+        {
+            var ledgerTree = new List<Dto.Financial.MasterGeneralLedger>();
+
+
+            var parentLedger = allLedger.Select(a => a.TransactionNo).Distinct();
+            var childLedgers = new List<Dto.Financial.MasterGeneralLedger>();
+            parentLedger.ToList().ForEach(a =>
+            {
+                var childrenLedger = allLedger.Where(x => x.TransactionNo == a);
+
+                var secondChild = new Dto.Financial.MasterGeneralLedger();
+                var thirdChildren = new List<Dto.Financial.MasterGeneralLedger>();
+                secondChild.GroupId = a;
+                secondChild.TransactionNo = null;
+                secondChild.Credit = null;
+                secondChild.Debit = null;
+                secondChild.Date = null;
+                foreach (var ledger in childrenLedger)
+                {
+                    var thirdChild = new Dto.Financial.MasterGeneralLedger();
+                    thirdChild.Id = ledger.Id;
+                    thirdChild.TransactionNo = ledger.TransactionNo;
+                    thirdChild.AccountId = ledger.AccountId;
+                    thirdChild.AccountName = ledger.AccountName;
+                    thirdChild.AccountCode = ledger.AccountCode;
+                    thirdChild.CurrencyId = ledger.CurrencyId;
+                    thirdChild.Date = ledger.Date;
+                    thirdChild.Debit = ledger.Debit;
+                    thirdChild.Credit = ledger.Credit;
+                    thirdChildren.Add(thirdChild);
+                    secondChild.ChildMasterGeneralLedger = thirdChildren;
+                }
+
+                childLedgers.Add(secondChild);
+
+
+            });
+
+            return childLedgers;
+        }
+        #endregion
+
+        #region Bank Management
+        [HttpGet]
+        [Route("Bank/{id}")] // api/Financials/Bank/1
+        public IActionResult GetBank(int id)
+        {
+            try
+            {
+                var bank = _financialService.GetBank(id);
+                if (bank == null)
+                    return NotFound(new { message = "Bank not found" });
+
+                var bankDto = new Dto.Financial.Bank()
+                {
+                    Id = bank.Id,
+                    Name = bank.Name,
+                    AccountNo = bank.Number,
+                    BankName = bank.BankName,
+                    AccountId = bank.AccountId
+                };
+
+                return Ok(bankDto);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpPost]
+        [Route("Bank")] // api/Financials/Bank
+        public IActionResult CreateBank([FromBody] Dto.Financial.Bank bankDto)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                    return BadRequest(ModelState);
+
+                var account = GetEligibleBankAccount(bankDto.AccountId);
+                if (account == null)
+                    return BadRequest(new { message = "Select an account with a code between 10100 and 10999." });
+
+                var bank = new Core.Domain.Financials.Bank()
+                {
+                    Name = account.AccountName,
+                    BankName = bankDto.BankName,
+                    Number = bankDto.AccountNo,
+                    AccountId = bankDto.AccountId,
+                    Type = Core.Domain.BankTypes.CheckingAccount,
+                    IsActive = true
+                };
+
+                _financialService.SaveBank(bank);
+
+                var result = new Dto.Financial.Bank()
+                {
+                    Id = bank.Id,
+                    Name = bank.Name,
+                    AccountNo = bank.Number,
+                    BankName = bank.BankName,
+                    AccountId = bank.AccountId
+                };
+
+                return CreatedAtAction(nameof(GetBank), new { id = bank.Id }, result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpPut]
+        [Route("Bank/{id}")] // api/Financials/Bank/1
+        public IActionResult UpdateBank(int id, [FromBody] Dto.Financial.Bank bankDto)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                    return BadRequest(ModelState);
+
+                var account = GetEligibleBankAccount(bankDto.AccountId);
+                if (account == null)
+                    return BadRequest(new { message = "Select an account with a code between 10100 and 10999." });
+
+                var bank = _financialService.GetBank(id);
+                if (bank == null)
+                    return NotFound(new { message = "Bank not found" });
+
+                bank.Name = account.AccountName;
+                bank.BankName = bankDto.BankName;
+                bank.Number = bankDto.AccountNo;
+                bank.AccountId = bankDto.AccountId;
+
+                _financialService.SaveBank(bank);
+
+                var result = new Dto.Financial.Bank()
+                {
+                    Id = bank.Id,
+                    Name = bank.Name,
+                    AccountNo = bank.Number,
+                    BankName = bank.BankName,
+                    AccountId = bank.AccountId
+                };
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpDelete]
+        [Route("Bank/{id}")] // api/Financials/Bank/1
+        public IActionResult DeleteBank(int id)
+        {
+            try
+            {
+                var bank = _financialService.GetBank(id);
+                if (bank == null)
+                    return NotFound(new { message = "Bank not found" });
+
+                _financialService.DeleteBank(id);
+
+                return Ok(new { message = "Bank deleted successfully" });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        private Core.Domain.Financials.Account? GetEligibleBankAccount(int? accountId)
+        {
+            if (!accountId.HasValue)
+                return null;
+
+            var account = _financialService.GetAccounts().FirstOrDefault(a => a.Id == accountId.Value);
+            int accountCode;
+            if (account == null
+                || !int.TryParse(account.AccountCode, out accountCode)
+                || accountCode < 10100
+                || accountCode > 10999)
+                return null;
+
+            return account;
+        }
+        #endregion
+    }
+}

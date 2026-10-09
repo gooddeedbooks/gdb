@@ -1,0 +1,6 @@
+﻿@using AccountGoWeb.Components.Pages.Sales
+@{
+    var customerId = Context.Request.RouteValues["id"]?.ToString() ?? "0";
+}
+
+<component type="typeof(Customer)" render-mode="Server" param-Id="int.Parse(customerId)" />
