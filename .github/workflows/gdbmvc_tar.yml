@@ -16,7 +16,6 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.x'
-          include-prerelease: true
 
       - name: Install dotnet aspire workload
         run: |
@@ -78,9 +77,9 @@ jobs:
       - name: Login to Azure
         uses: azure/login@v2
         with:
-            client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_8B6389BB3F37413FB2483AC2574C3BCB }}
-            tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_FD62C59DE5DC42C2A07DB8191A522348 }}
-            subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_7076EF307FDA4C11BC99A0A7A0943794 }}
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_210CA56EEB284BC0A9A7D53A7D17CE29 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_34B173771B5346ECB70D30C18B948A9D }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_FB5AECF1E0374333BCB2DC23E196BBA7 }}
   
       - name: Extract artifacts
         run: |
