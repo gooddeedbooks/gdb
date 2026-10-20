@@ -48,6 +48,7 @@ namespace GoodBooks.BackendTests.Donors
         [InlineData("DonorType", "Other")]
         [InlineData("DonorType", "")]
         [InlineData("Street", "")]
+        [InlineData("City", "")]
         [InlineData("Province", "")]
         [InlineData("Province", "ZZ")]
         [InlineData("PostalCode", "")]
@@ -133,6 +134,7 @@ namespace GoodBooks.BackendTests.Donors
                 FirstName = "Olivia",
                 LastName = "Bennett",
                 Street = "125 Maple Street",
+                City = "Ottawa",
                 Province = "ON",
                 PostalCode = "K1A 0B1",
                 Telephone = "613-555-0101",

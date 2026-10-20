@@ -85,6 +85,8 @@ namespace Api.Controllers
             donor.LastName = input.DonorType == "Individual" ? input.LastName.Trim() : string.Empty;
             donor.CompanyName = input.DonorType == "Company" ? input.CompanyName.Trim() : string.Empty;
             donor.Street = input.Street.Trim();
+            donor.City = input.City.Trim();
+            donor.IssueTaxReceipt = input.IssueTaxReceipt;
             donor.Province = input.Province;
             donor.PostalCode = input.PostalCode.Trim().ToUpperInvariant();
             donor.Telephone = input.Telephone.Trim();
@@ -101,6 +103,8 @@ namespace Api.Controllers
                 LastName = donor.LastName,
                 CompanyName = donor.CompanyName,
                 Street = donor.Street,
+                City = donor.City,
+                IssueTaxReceipt = donor.IssueTaxReceipt,
                 Province = donor.Province,
                 PostalCode = donor.PostalCode,
                 Telephone = donor.Telephone,

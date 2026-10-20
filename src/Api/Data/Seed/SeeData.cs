@@ -24,6 +24,7 @@ namespace Api.Data.Seed
                     LastName = "Bennett",
                     CompanyName = string.Empty,
                     Street = "125 Maple Street",
+                    City = "Ottawa",
                     Province = "ON",
                     PostalCode = "K1A 0B1",
                     Telephone = "613-555-0101",
@@ -37,6 +38,7 @@ namespace Api.Data.Seed
                     LastName = string.Empty,
                     CompanyName = "Cedar Grove Community Services",
                     Street = "480 Cedar Avenue",
+                    City = "Vancouver",
                     Province = "BC",
                     PostalCode = "V6B 1A1",
                     Telephone = "604-555-0102",
@@ -53,7 +55,11 @@ namespace Api.Data.Seed
                     Name = "Financial Solutions Inc.",
                     CompanyCode = "100",
                     ShortName = "FSI",
-                    CRA = "012345678"
+                    CRA = "012345678",
+                    Street = "1456 Water Street",
+                    City = "Kelowna",
+                    Province = "BC",
+                    PostalCode = "V1Y 1J9"
                 }
             };
             return companiees;

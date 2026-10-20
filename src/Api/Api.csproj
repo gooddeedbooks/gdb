@@ -23,6 +23,7 @@
     </PackageReference>
     <PackageReference Include="OpenTelemetry.Api" Version="1.15.3" />
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.3" />
+    <PackageReference Include="QuestPDF" Version="2026.9.1" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.7" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.7" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="10.0.7" />
@@ -36,5 +37,8 @@
   <ItemGroup>
     <EmbeddedResource Include="Data\ChartOfAccounts.csv" />
     <EmbeddedResource Include="Data\coa.csv" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Assets\canada-flag.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

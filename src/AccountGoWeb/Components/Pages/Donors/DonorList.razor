@@ -52,6 +52,7 @@
                                                                                aria-hidden="true"></i></button></th>
                             <th scope="col">Type</th>
                             <th scope="col">Street</th>
+                            <th scope="col">City</th>
                             <th scope="col">Province</th>
                             <th scope="col">Postal Code</th>
                             <th scope="col">Telephone</th>
@@ -66,12 +67,15 @@
                                 <td><a href="/donors/@donor.Id">@donor.Name</a></td>
                                 <td>@donor.DonorType</td>
                                 <td>@donor.Street</td>
+                                <td>@donor.City</td>
                                 <td>@donor.Province</td>
                                 <td class="text-nowrap">@donor.PostalCode</td>
                                 <td><a href="tel:@donor.Telephone">@donor.Telephone</a></td>
                                 <td class="text-break"><a href="mailto:@donor.Email">@donor.Email</a></td>
                                 <td class="text-nowrap">
-                                    <a class="btn btn-sm btn-secondary" href="/donors/@donor.Id" title="Edit donor"
+                                    <a class="btn btn-sm btn-success" href="/donor-transactions?donorId=@donor.Id" title="Donor transactions and tax receipts"
+                                       aria-label="Transactions for @donor.Name"><i class="fas fa-file-invoice" aria-hidden="true"></i> Transactions</a>
+                                    <a class="btn btn-sm btn-secondary ms-1" href="/donors/@donor.Id" title="Edit donor"
                                        aria-label="Edit @donor.Name"><i class="fas fa-pen" aria-hidden="true"></i></a>
                                     <button class="btn btn-sm btn-outline-danger ms-1" title="Delete donor"
                                             aria-label="Delete @donor.Name" disabled="@isDeleting"
@@ -114,7 +118,7 @@
         get
         {
             var filtered = donors.Where(donor => string.IsNullOrWhiteSpace(search) ||
-                (donor.Name + " " + donor.DonorType + " " + donor.Street + " " + donor.Province + " " + donor.PostalCode + " " +
+                (donor.Name + " " + donor.DonorType + " " + donor.Street + " " + donor.City + " " + donor.Province + " " + donor.PostalCode + " " +
 donor.Telephone + " " + donor.Email)
                     .IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0);
             return sortAscending ? filtered.OrderBy(donor => donor.Name) : filtered.OrderByDescending(donor => donor.Name);

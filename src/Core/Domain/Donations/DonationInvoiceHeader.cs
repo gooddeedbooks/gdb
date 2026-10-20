@@ -23,6 +23,9 @@ namespace Core.Domain.Donations
         public string PaymentType { get; set; } = string.Empty;
         [Column(TypeName = "decimal(18, 2)")]
         public decimal Amount { get; set; }
+        [Column(TypeName = "decimal(18, 2)")]
+        public decimal AdvantageAmount { get; set; }
+        public DateTime? ReceiptIssuedDate { get; set; }
         public int? GlAccountId { get; set; }
         public string Purpose { get; set; }
         public bool IsTaxReceiptIssued { get; set; }

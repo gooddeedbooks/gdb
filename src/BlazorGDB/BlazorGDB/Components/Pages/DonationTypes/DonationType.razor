@@ -1,0 +1,10 @@
+@page "/donation-types/new"
+@page "/donation-types/{Id:int}"
+@rendermode InteractiveServer
+
+<GoodBooks.DonationTypes.Components.DonationTypeForm Id="Id" />
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+}

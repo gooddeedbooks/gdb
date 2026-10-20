@@ -25,6 +25,11 @@ namespace Dto.Donors
          StringLength(200, ErrorMessage = "Street address cannot exceed 200 characters.")]
         public string Street { get; set; } = string.Empty;
 
+        [Required(ErrorMessage = "City is required. Enter the donor's city."),
+         StringLength(100, ErrorMessage = "City cannot exceed 100 characters.")]
+        public string City { get; set; } = string.Empty;
+        public bool IssueTaxReceipt { get; set; }
+
         [Required(ErrorMessage = "Province is required. Select the donor's Canadian province or territory."),
          RegularExpression("^(AB|BC|MB|NB|NL|NS|NT|NU|ON|PE|QC|SK|YT)$", ErrorMessage = "Select a Canadian province or territory from the Province dropdown.")]
         public string Province { get; set; } = string.Empty;

@@ -1,11 +1,15 @@
-@rendermode InteractiveServer
+@namespace GoodBooks.Donors.Components
 @using Dto.Donations
 @using System.Net.Http.Json
-@inject HttpClient Http
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.Extensions.Configuration
+@inject IHttpClientFactory ClientFactory
 @inject IConfiguration Configuration
 @inject NavigationManager NavigationManager
 
-<PageTitle>Donation</PageTitle>
+<PageTitle>@(Id.GetValueOrDefault() > 0 ? "Edit Donor Transaction" : "New Donor Transaction")</PageTitle>
+
+<h1 class="h3 mb-3">@(Id.GetValueOrDefault() > 0 ? "Edit Donor Transaction" : "New Donor Transaction")</h1>
 
 @if (!string.IsNullOrEmpty(errorMessage))
 {
@@ -27,7 +31,7 @@ else if (isLoaded)
                     <div class="col-12">
                         <label class="form-label" for="donation-donor">Donor</label>
                         <InputSelect id="donation-donor" class="form-select form-control-themed"
-                                     @bind-Value="invoice.DonorId">
+                                     @bind-Value="invoice.DonorId" disabled="@(invoice.Id > 0)">
                             <option value="0">-- Select Donor --</option>
                             @foreach (var donor in donors)
                             {
@@ -56,9 +60,16 @@ else if (isLoaded)
                         <ValidationMessage class="text-danger" For="() => invoice.PaymentType" />
                     </div>
                     <div class="col-12">
-                        <label class="form-label" for="donation-purpose">Purpose</label>
-                        <InputText id="donation-purpose" class="form-control form-control-themed"
-                                   @bind-Value="invoice.Purpose" />
+                        <label class="form-label" for="donation-type">Donation Type</label>
+                        <select id="donation-type" class="form-select form-control-themed" value="@donationTypeId"
+                                @onchange="OnDonationTypeChanged">
+                            <option value="0">-- Select Donation Type --</option>
+                            @foreach (var type in donationTypes)
+                            {
+                                <option value="@type.Id">@type.Name@(string.IsNullOrEmpty(type.GlAccountCode) ? "" : " (" + type.GlAccountCode + ")")</option>
+                            }
+                        </select>
+                        <ValidationMessage class="text-danger" For="() => invoice.GlAccountId" />
                     </div>
                     <div class="col-md-6">
                         <label class="form-label" for="donation-amount">Amount</label>
@@ -67,23 +78,30 @@ else if (isLoaded)
                         <ValidationMessage class="text-danger" For="() => invoice.Amount" />
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label" for="donation-gl-code">GL Code</label>
-                        <InputSelect id="donation-gl-code" class="form-select form-control-themed"
-                                     @bind-Value="invoice.GlAccountId">
-                            <option value="">-- Select GL Code --</option>
-                            @foreach (var account in accounts)
-                            {
-                                <option value="@account.Id">@account.AccountCode - @account.AccountName</option>
-                            }
-                        </InputSelect>
-                        <ValidationMessage class="text-danger" For="() => invoice.GlAccountId" />
+                        <label class="form-label" for="donation-advantage">Advantage (value of any benefit received by the donor)</label>
+                        <InputNumber id="donation-advantage" class="form-control form-control-themed"
+                                     @bind-Value="invoice.AdvantageAmount" step="0.01" min="0" />
+                        <ValidationMessage class="text-danger" For="() => invoice.AdvantageAmount" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="donation-eligible">Eligible Amount of Gift</label>
+                        <input id="donation-eligible" class="form-control form-control-themed" readonly
+                               value="@((invoice.Amount - invoice.AdvantageAmount).ToString("F2"))" />
                     </div>
                     <div class="col-12">
-                        <div class="form-check">
-                            <InputCheckbox id="donation-tax-receipt" class="form-check-input"
-                                           @bind-Value="invoice.IsTaxReceiptIssued" />
-                            <label class="form-check-label" for="donation-tax-receipt">Tax Receipt</label>
-                        </div>
+                        @if (invoice.Id == 0)
+                        {
+                            <div class="form-text">A tax receipt is issued automatically when the donor is set to "Issue tax receipt" in Manage Donors.</div>
+                        }
+                        @if (invoice.Id > 0 && invoice.IsTaxReceiptIssued && !string.IsNullOrEmpty(invoice.TaxReceiptNo))
+                        {
+                            <div class="mt-2">
+                                Receipt # <strong>@invoice.TaxReceiptNo</strong>
+                                <a class="btn btn-sm btn-outline-primary ms-2" href="/donor-transactions/@invoice.Id/receipt">
+                                    <i class="fas fa-print" aria-hidden="true"></i> View / Print Receipt
+                                </a>
+                            </div>
+                        }
                     </div>
                 </div>
                 <div class="d-flex gap-2 mt-4">
@@ -100,16 +118,25 @@ else if (isLoaded)
 }
 else
 {
-    <a class="btn btn-secondary" href="/donations/donationinvoices">Back to Donations</a>
+    <a class="btn btn-secondary" href="@ReturnUrl">Back to Donor Transactions</a>
 }
 
 @code {
     [Parameter]
+    public int DonorId { get; set; }
+
+    [Parameter]
     public int? Id { get; set; }
+
+    [Parameter]
+    public bool ForceLoad { get; set; }
+
+    private string ReturnUrl => "/donor-transactions";
 
     private DonationInvoice invoice = new DonationInvoice();
     private List<Dto.Donors.Donor> donors = new List<Dto.Donors.Donor>();
-    private List<Dto.Financial.Account> accounts = new List<Dto.Financial.Account>();
+    private List<Dto.DonationTypes.DonationType> donationTypes = new List<Dto.DonationTypes.DonationType>();
+    private int donationTypeId;
     private bool isLoading = true;
     private bool isLoaded;
     private bool isSaving;
@@ -126,40 +153,41 @@ else
         var loading = "donors";
         try
         {
-            donors = await Http.GetFromJsonAsync<List<Dto.Donors.Donor>>(ApiUrl + "donors") ?? new List<Dto.Donors.Donor>();
-            loading = "GL accounts";
-            accounts = await Http.GetFromJsonAsync<List<Dto.Financial.Account>>(ApiUrl + "donations/DonationAccounts") ?? new
-List<Dto.Financial.Account>();
+            donors = await ClientFactory.CreateClient().GetFromJsonAsync<List<Dto.Donors.Donor>>(ApiUrl + "donors") ?? new List<Dto.Donors.Donor>();
+            loading = "donation types";
+            donationTypes = await ClientFactory.CreateClient().GetFromJsonAsync<List<Dto.DonationTypes.DonationType>>(ApiUrl + "donation-types")
+                ?? new List<Dto.DonationTypes.DonationType>();
             loading = "donation";
             if (Id.GetValueOrDefault() > 0)
             {
-                var loadedDonation = await Http.GetFromJsonAsync<DonationInvoice>(ApiUrl + "donations/DonationInvoice?id=" +
+                var loadedDonation = await ClientFactory.CreateClient().GetFromJsonAsync<DonationInvoice>(ApiUrl + "donations/DonationInvoice?id=" +
 Id.GetValueOrDefault());
                 if (loadedDonation == null)
                 {
-                    errorMessage = "The API returned an empty donation. Return to Donations and select an existing record.";
+                    errorMessage = "The API returned an empty donation. Return to the donor's donations and select an existing record.";
                     return;
                 }
                 invoice = loadedDonation;
             }
             else
-                invoice = new DonationInvoice();
+                invoice = new DonationInvoice { DonorId = DonorId };
 
+            donationTypeId = donationTypes.FirstOrDefault(type => type.GlAccountId == invoice.GlAccountId && type.Name == invoice.Purpose)?.Id ?? 0;
             isLoaded = true;
-            if (accounts.Count == 0)
-                errorMessage = "No GL accounts with codes between 41000 and 41999 are available. Add a donation account to the chart of accounts before saving.";
+            if (donationTypes.Count == 0)
+                errorMessage = "No donation types are available. Add one under Donors > Donation Types before saving a transaction.";
             else if (donors.Count == 0)
                 errorMessage = "No donors are available. Add a donor in the Donors module before saving a donation.";
         }
         catch (HttpRequestException exception)
         {
             errorMessage = exception.StatusCode.HasValue
-                ? $"Unable to load {loading} (HTTP {(int)exception.StatusCode.Value}). Return to Donations and try again. Contact your administrator if the problem continues."
+                ? $"Unable to load {loading} (HTTP {(int)exception.StatusCode.Value}). Return to the donor's donations and try again. Contact your administrator if the problem continues."
                 : $"Unable to reach the API while loading {loading}. Check the API connection and try again.";
         }
         catch (TaskCanceledException)
         {
-            errorMessage = $"Loading {loading} timed out. Return to Donations and try again.";
+            errorMessage = $"Loading {loading} timed out. Return to the donor's donations and try again.";
         }
         catch (System.Text.Json.JsonException)
         {
@@ -171,6 +199,14 @@ Id.GetValueOrDefault());
         }
     }
 
+    private void OnDonationTypeChanged(ChangeEventArgs args)
+    {
+        int.TryParse(args.Value?.ToString(), out donationTypeId);
+        var type = donationTypes.FirstOrDefault(t => t.Id == donationTypeId);
+        invoice.GlAccountId = type?.GlAccountId;
+        invoice.Purpose = type?.Name;
+    }
+
     private async Task SaveDonationAsync()
     {
         if (isSaving) return;
@@ -178,8 +214,11 @@ Id.GetValueOrDefault());
         errorMessage = null;
         try
         {
+            if (invoice.Id == 0 && donors.FirstOrDefault(d => d.Id == invoice.DonorId)?.IssueTaxReceipt == true)
+                invoice.IsTaxReceiptIssued = true;
             var endpoint = Id.GetValueOrDefault() > 0 ? "donations/UpdateDonationInvoice" : "donations/CreateDonationInvoice";
-            using (var response = await Http.PostAsJsonAsync(ApiUrl + endpoint, invoice))
+            using (var client = ClientFactory.CreateClient())
+            using (var response = await client.PostAsJsonAsync(ApiUrl + endpoint, invoice))
             {
                 if (!response.IsSuccessStatusCode)
                 {
@@ -203,7 +242,7 @@ System.Net.HttpStatusCode.UnprocessableEntity)
                         errorMessage = $"The donation could not be saved (HTTP {(int)response.StatusCode}). Your entered details have been kept. Check the Donations list before retrying.";
                     return;
                 }
-                NavigationManager.NavigateTo("/donations/donationinvoices", forceLoad: true);
+                NavigationManager.NavigateTo(ReturnUrl, ForceLoad);
             }
         }
         catch (HttpRequestException)
@@ -226,6 +265,6 @@ System.Net.HttpStatusCode.UnprocessableEntity)
 
     private void Cancel()
     {
-        NavigationManager.NavigateTo("/donations/donationinvoices", forceLoad: true);
+        NavigationManager.NavigateTo(ReturnUrl, ForceLoad);
     }
 }

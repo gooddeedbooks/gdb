@@ -91,22 +91,38 @@
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link" asp-area="" asp-controller="Donations"
-                                    asp-action="DonationInvoices">
-                                    Donations
-                                </a>
-                            </li>
-                            <li class="nav-item">
                                 <a class="nav-link" asp-area="" asp-controller="Sales" asp-action="Customers">
                                     Customers
                                 </a>
                             </li>
                         </ul>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" asp-area="" asp-controller="Donors" asp-action="Index">
+                    <li class="nav-item nav-dropdown">
+                        <a class="nav-link nav-dropdown-toggle" href="#">
                             <i class="nav-icon fas fa-hand-holding-heart"></i> Donors
                         </a>
+                        <ul class="nav-dropdown-items">
+                            <li class="nav-item">
+                                <a class="nav-link" asp-area="" asp-controller="Donors" asp-action="Index">
+                                    Manage Donors
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" asp-area="" asp-controller="DonorTransactions" asp-action="Index">
+                                    Donor Transactions
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" asp-area="" asp-controller="DonorReceipts" asp-action="Index">
+                                    Tax Receipts PDF
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" asp-area="" asp-controller="DonationTypes" asp-action="Index">
+                                    Donation Types
+                                </a>
+                            </li>
+                        </ul>
                     </li>
                     <li class="nav-item nav-dropdown">
                         <a class="nav-link nav-dropdown-toggle" href="#">

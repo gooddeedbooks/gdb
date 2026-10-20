@@ -1,0 +1,14 @@
+@page "/donor-transactions/new"
+@page "/donor-transactions/{Id:int}"
+@rendermode InteractiveServer
+
+<GoodBooks.Donors.Components.DonorDonationForm DonorId="DonorId" Id="Id" />
+
+@code {
+    [Parameter]
+    public int? Id { get; set; }
+
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "donorId")]
+    public int DonorId { get; set; }
+}

@@ -1,7 +1,9 @@
 using Api.ActionFilters;
+using Api.Reports;
 using Dto.Donations;
 using Microsoft.AspNetCore.Mvc;
 using Services.Donations;
+using Services.Administration;
 using Services.Financial;
 
 namespace Api.Controllers
@@ -12,12 +14,14 @@ namespace Api.Controllers
         private readonly IDonationsService _donationsService;
         private readonly ILogger<DonationsController> _logger;
         private readonly IFinancialService _financialService;
+        private readonly IAdministrationService _adminService;
 
-        public DonationsController(IDonationsService donationsService, ILogger<DonationsController> logger, IFinancialService financialService)
+        public DonationsController(IDonationsService donationsService, ILogger<DonationsController> logger, IFinancialService financialService, IAdministrationService adminService)
         {
             _donationsService = donationsService;
             _logger = logger;
             _financialService = financialService;
+            _adminService = adminService;
         }
 
         [HttpGet("DonationAccounts")]
@@ -37,11 +41,13 @@ namespace Api.Controllers
 
         [HttpGet]
         [Route("DonationInvoices")]
-        public IActionResult DonationInvoices()
+        public IActionResult DonationInvoices(int? donorId = null)
         {
             _logger.LogInformation("Getting all donation invoices");
 
             var donationInvoices = _donationsService.GetDonationInvoices();
+            if (donorId.HasValue)
+                donationInvoices = donationInvoices.Where(d => d.DonorId == donorId.Value).ToList();
             IList<DonationInvoice> donationInvoicesDto = new List<DonationInvoice>();
 
             foreach (var invoice in donationInvoices)
@@ -62,6 +68,8 @@ namespace Api.Controllers
                     Purpose = invoice.Purpose,
                     IsTaxReceiptIssued = invoice.IsTaxReceiptIssued,
                     TaxReceiptNo = invoice.TaxReceiptNo,
+                    AdvantageAmount = invoice.AdvantageAmount,
+                    ReceiptIssuedDate = invoice.ReceiptIssuedDate,
                     Posted = invoice.Posted
                 };
 
@@ -83,6 +91,76 @@ namespace Api.Controllers
             }
 
             return Ok(donationInvoicesDto);
+        }
+
+        [HttpGet("DonationReceipt")]
+        public IActionResult DonationReceipt(int id)
+        {
+            var invoice = _donationsService.GetDonationInvoiceById(id);
+            if (invoice == null)
+                return NotFound();
+
+            if (!invoice.IsTaxReceiptIssued || string.IsNullOrEmpty(invoice.TaxReceiptNo))
+                return BadRequest("An official tax receipt has not been issued for this donation.");
+
+            return Ok(BuildReceipt(invoice, _adminService.GetDefaultCompany()));
+        }
+
+        [HttpGet("DonationReceipts")]
+        public IActionResult DonationReceipts(DateTime from, DateTime to)
+        {
+            if (to.Date < from.Date)
+                return BadRequest("The end date cannot be before the start date.");
+            var company = _adminService.GetDefaultCompany();
+            var receipts = _donationsService.GetDonationInvoices()
+                .Where(d => d.IsTaxReceiptIssued && !string.IsNullOrEmpty(d.TaxReceiptNo)
+                    && (d.ReceiptIssuedDate ?? d.Date).Date >= from.Date && (d.ReceiptIssuedDate ?? d.Date).Date <= to.Date)
+                .Select(d => BuildReceipt(d, company))
+                .OrderBy(r => r.DonorName, StringComparer.CurrentCultureIgnoreCase).ThenBy(r => r.IssuedDate).ThenBy(r => r.ReceiptNo)
+                .ToList();
+            return Ok(receipts);
+        }
+
+        [HttpGet("DonationReceiptsPdf")]
+        public IActionResult DonationReceiptsPdf(DateTime from, DateTime to)
+        {
+            if (to.Date < from.Date)
+                return BadRequest("The end date cannot be before the start date.");
+            var result = DonationReceipts(from, to) as OkObjectResult;
+            var receipts = (List<DonationReceipt>)result!.Value!;
+            if (receipts.Count == 0)
+                return NotFound("No tax receipts were issued between the selected dates.");
+            return File(DonationReceiptPdf.Generate(receipts), "application/pdf",
+                $"donation-tax-receipts-{from:yyyyMMdd}-{to:yyyyMMdd}.pdf");
+        }
+
+        private static DonationReceipt BuildReceipt(Core.Domain.Donations.DonationInvoiceHeader invoice, Core.Domain.Company? company)
+        {
+            var donor = invoice.Donor;
+            var cra = company?.CRA ?? string.Empty;
+            var location = string.Join(", ", new[] { company?.City, company?.Province }.Where(part => !string.IsNullOrWhiteSpace(part)));
+
+            return new DonationReceipt
+            {
+                ReceiptNo = invoice.TaxReceiptNo,
+                CharityName = company?.Name ?? string.Empty,
+                CharityStreet = company?.Street ?? string.Empty,
+                CharityCity = company?.City ?? string.Empty,
+                CharityProvince = company?.Province ?? string.Empty,
+                CharityPostalCode = company?.PostalCode ?? string.Empty,
+                RegistrationNumber = cra.Length == 0 || cra.Contains("RR", StringComparison.OrdinalIgnoreCase) ? cra : cra + " RR 0001",
+                IssuedDate = invoice.ReceiptIssuedDate ?? invoice.Date,
+                LocationIssued = location,
+                DonorName = GetDonorName(donor),
+                DonorStreet = donor?.Street ?? string.Empty,
+                DonorCity = donor?.City ?? string.Empty,
+                DonorProvince = donor?.Province ?? string.Empty,
+                DonorPostalCode = donor?.PostalCode ?? string.Empty,
+                DonationDate = invoice.Date,
+                Amount = invoice.Amount,
+                AdvantageAmount = invoice.AdvantageAmount,
+                EligibleAmount = invoice.Amount - invoice.AdvantageAmount
+            };
         }
 
         [HttpGet]
@@ -112,6 +190,8 @@ namespace Api.Controllers
                 Purpose = invoice.Purpose,
                 IsTaxReceiptIssued = invoice.IsTaxReceiptIssued,
                 TaxReceiptNo = invoice.TaxReceiptNo,
+                AdvantageAmount = invoice.AdvantageAmount,
+                ReceiptIssuedDate = invoice.ReceiptIssuedDate,
                 Posted = invoice.Posted
             };
 

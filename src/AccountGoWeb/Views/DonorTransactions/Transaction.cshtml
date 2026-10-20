@@ -1,0 +1,4 @@
+@model int
+@using GoodBooks.Donors.Components
+
+<component type="typeof(DonorDonationForm)" render-mode="Server" param-DonorId="(int)ViewBag.DonorId" param-Id="Model" param-ForceLoad="true" />

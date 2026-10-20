@@ -72,6 +72,16 @@ app.MapRazorComponents<App>()
     .AddInteractiveWebAssemblyRenderMode()
     .AddAdditionalAssemblies(typeof(BlazorGDB.Client._Imports).Assembly);
 
+app.MapGet("/donor-receipts/pdf", async (DateTime from, DateTime to, IConfiguration configuration, IHttpClientFactory clientFactory) =>
+{
+    var apiUrl = (configuration["ApiUrl"] ?? Environment.GetEnvironmentVariable("APIURL") ?? "http://localhost:8001/api/").TrimEnd('/') + "/";
+    using var client = clientFactory.CreateClient();
+    using var response = await client.GetAsync($"{apiUrl}donations/DonationReceiptsPdf?from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}");
+    if (!response.IsSuccessStatusCode)
+        return Results.Text((await response.Content.ReadAsStringAsync()).Trim('"'), "text/plain");
+    return Results.File(await response.Content.ReadAsByteArrayAsync(), "application/pdf", $"donation-tax-receipts-{from:yyyyMMdd}-{to:yyyyMMdd}.pdf");
+});
+
 // Add additional endpoints required by the Identity /Account Razor components.
 app.MapAdditionalIdentityEndpoints();
 

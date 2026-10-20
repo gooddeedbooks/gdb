@@ -33,5 +33,6 @@
   </ItemGroup>
   <ItemGroup>
     <RazorComponent Include="../../AccountGoWeb/Components/Pages/Donors/*.razor" Link="Components/Shared/Donors/%(Filename)%(Extension)" />
+    <RazorComponent Include="../../AccountGoWeb/Components/Pages/DonationTypes/*.razor" Link="Components/Shared/DonationTypes/%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

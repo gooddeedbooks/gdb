@@ -79,14 +79,18 @@ namespace Services.Donations
                     Amount = donationInvoiceDto.Amount,
                     GlAccountId = donationInvoiceDto.GlAccountId,
                     Purpose = donationInvoiceDto.Purpose,
-                    IsTaxReceiptIssued = donationInvoiceDto.IsTaxReceiptIssued,
-                    TaxReceiptNo = donationInvoiceDto.TaxReceiptNo,
+                    AdvantageAmount = donationInvoiceDto.AdvantageAmount,
                     Posted = false,
                     ModifiedBy = "system"
                 };
 
+                if (donationInvoiceDto.IsTaxReceiptIssued)
+                    IssueReceipt(donationInvoice);
+
                 _donationInvoiceRepo.Insert(donationInvoice);
 
+                donationInvoiceDto.TaxReceiptNo = donationInvoice.TaxReceiptNo;
+                donationInvoiceDto.ReceiptIssuedDate = donationInvoice.ReceiptIssuedDate;
                 donationInvoiceDto.Id = donationInvoice.Id;
                 donationInvoiceDto.No = donationInvoice.No;
 
@@ -124,11 +128,20 @@ namespace Services.Donations
                 donationInvoice.Amount = donationInvoiceDto.Amount;
                 donationInvoice.GlAccountId = donationInvoiceDto.GlAccountId;
                 donationInvoice.Purpose = donationInvoiceDto.Purpose;
-                donationInvoice.IsTaxReceiptIssued = donationInvoiceDto.IsTaxReceiptIssued;
-                donationInvoice.TaxReceiptNo = donationInvoiceDto.TaxReceiptNo;
+                donationInvoice.AdvantageAmount = donationInvoiceDto.AdvantageAmount;
+
+                if (donationInvoice.IsTaxReceiptIssued && !donationInvoiceDto.IsTaxReceiptIssued)
+                    return Result<Dto.Donations.DonationInvoice>.Failure(new Error("RECEIPT_ALREADY_ISSUED", "An official tax receipt has already been issued for this donation and cannot be withdrawn."));
+
+                if (donationInvoiceDto.IsTaxReceiptIssued && !donationInvoice.IsTaxReceiptIssued)
+                    IssueReceipt(donationInvoice);
+
                 donationInvoice.ModifiedBy = "system";
 
                 _donationInvoiceRepo.Update(donationInvoice);
+
+                donationInvoiceDto.TaxReceiptNo = donationInvoice.TaxReceiptNo;
+                donationInvoiceDto.ReceiptIssuedDate = donationInvoice.ReceiptIssuedDate;
 
                 _logger.LogInformation("Updated donation {Id}", donationInvoice.Id);
 
@@ -166,6 +179,19 @@ namespace Services.Donations
             }
         }
 
+        private void IssueReceipt(DonationInvoiceHeader donation)
+        {
+            var lastNumber = _donationInvoiceRepo.GetAllIncluding()
+                .Select(d => d.TaxReceiptNo)
+                .ToList()
+                .Select(no => int.TryParse(no, out var n) ? n : 0)
+                .DefaultIfEmpty(0)
+                .Max();
+            donation.IsTaxReceiptIssued = true;
+            donation.TaxReceiptNo = (lastNumber + 1).ToString("D5");
+            donation.ReceiptIssuedDate = DateTime.Today;
+        }
+
         private Result<Dto.Donations.DonationInvoice> ValidateDonation(Dto.Donations.DonationInvoice donation)
         {
             var errors = new List<ValidationResult>();
@@ -182,6 +208,9 @@ namespace Services.Donations
 
             if (decimal.Round(donation.Amount, 2) != donation.Amount)
                 return Result<Dto.Donations.DonationInvoice>.Failure(new Error("INVALID_AMOUNT", "Amount may have no more than two decimal places."));
+
+            if (donation.AdvantageAmount > donation.Amount)
+                return Result<Dto.Donations.DonationInvoice>.Failure(new Error("INVALID_ADVANTAGE", "The advantage amount cannot exceed the amount of the gift."));
 
             return Result<Dto.Donations.DonationInvoice>.Success(donation);
         }

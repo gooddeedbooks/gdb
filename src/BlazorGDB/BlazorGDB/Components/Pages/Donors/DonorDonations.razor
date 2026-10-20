@@ -1,0 +1,10 @@
+@page "/donor-transactions"
+@rendermode InteractiveServer
+
+<GoodBooks.Donors.Components.DonorDonations DonorId="DonorId" />
+
+@code {
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "donorId")]
+    public int DonorId { get; set; }
+}

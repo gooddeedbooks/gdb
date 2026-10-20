@@ -135,13 +135,25 @@ namespace Api.Data.Migrations.ApiDb
                     b.Property<string>("CRA")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("City")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("CompanyCode")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Name")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("PostalCode")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Province")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("ShortName")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Street")
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
@@ -153,9 +165,13 @@ namespace Api.Data.Migrations.ApiDb
                         {
                             Id = 1,
                             CRA = "012345678",
+                            City = "Kelowna",
                             CompanyCode = "100",
                             Name = "Financial Solutions Inc.",
-                            ShortName = "FSI"
+                            PostalCode = "V1Y 1J9",
+                            Province = "BC",
+                            ShortName = "FSI",
+                            Street = "1456 Water Street"
                         });
                 });
 
@@ -238,6 +254,9 @@ namespace Api.Data.Migrations.ApiDb
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<decimal>("AdvantageAmount")
+                        .HasColumnType("decimal(18, 2)");
+
                     b.Property<decimal>("Amount")
                         .HasColumnType("decimal(18, 2)");
 
@@ -265,6 +284,9 @@ namespace Api.Data.Migrations.ApiDb
 
                     b.Property<string>("Purpose")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("ReceiptIssuedDate")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("ReferenceNo")
                         .HasColumnType("nvarchar(max)");
@@ -320,6 +342,33 @@ namespace Api.Data.Migrations.ApiDb
                     b.ToTable("DonationInvoiceLine");
                 });
 
+            modelBuilder.Entity("Core.Domain.Donations.DonationType", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int?>("GlAccountId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GlAccountId");
+
+                    b.ToTable("DonationTypes");
+                });
+
             modelBuilder.Entity("Core.Domain.Donations.Donor", b =>
                 {
                     b.Property<int>("Id")
@@ -327,6 +376,11 @@ namespace Api.Data.Migrations.ApiDb
                         .HasColumnType("int");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("City")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("CompanyName")
                         .HasMaxLength(200)
@@ -345,6 +399,9 @@ namespace Api.Data.Migrations.ApiDb
                     b.Property<string>("FirstName")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
+
+                    b.Property<bool>("IssueTaxReceipt")
+                        .HasColumnType("bit");
 
                     b.Property<string>("LastName")
                         .HasMaxLength(100)
@@ -378,10 +435,12 @@ namespace Api.Data.Migrations.ApiDb
                         new
                         {
                             Id = 1,
+                            City = "Ottawa",
                             CompanyName = "",
                             DonorType = "Individual",
                             Email = "olivia.bennett@example.com",
                             FirstName = "Olivia",
+                            IssueTaxReceipt = false,
                             LastName = "Bennett",
                             PostalCode = "K1A 0B1",
                             Province = "ON",
@@ -391,10 +450,12 @@ namespace Api.Data.Migrations.ApiDb
                         new
                         {
                             Id = 2,
+                            City = "Vancouver",
                             CompanyName = "Cedar Grove Community Services",
                             DonorType = "Company",
                             Email = "giving@cedargrove.example.com",
                             FirstName = "",
+                            IssueTaxReceipt = false,
                             LastName = "",
                             PostalCode = "V6B 1A1",
                             Province = "BC",
@@ -2352,6 +2413,16 @@ namespace Api.Data.Migrations.ApiDb
                     b.Navigation("Item");
 
                     b.Navigation("Measurement");
+                });
+
+            modelBuilder.Entity("Core.Domain.Donations.DonationType", b =>
+                {
+                    b.HasOne("Core.Domain.Financials.Account", "GlAccount")
+                        .WithMany()
+                        .HasForeignKey("GlAccountId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.Navigation("GlAccount");
                 });
 
             modelBuilder.Entity("Core.Domain.Financials.Account", b =>

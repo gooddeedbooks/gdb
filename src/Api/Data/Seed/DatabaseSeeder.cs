@@ -50,7 +50,40 @@ namespace Api.Data.Seed
                 Console.WriteLine("Database seeding failed. Check logs for details.");
             }
 
-            SeedDonations(scope.ServiceProvider.GetRequiredService<ApiDbContext>());
+            var apiContext = scope.ServiceProvider.GetRequiredService<ApiDbContext>();
+            SeedDonations(apiContext);
+            SeedDonationTypes(apiContext);
+        }
+
+        private static void SeedDonationTypes(ApiDbContext context)
+        {
+            var samples = new[]
+            {
+                new { Name = "Project reach", Description = "To build low housing cost", AccountCode = "41001" },
+                new { Name = "Youth field trip", Description = "Trip to Kelowna", AccountCode = "41200" }
+            };
+
+            foreach (var sample in samples)
+            {
+                if (context.DonationTypes.Any(type => type.Name == sample.Name))
+                    continue;
+
+                var account = context.Accounts.FirstOrDefault(entity => entity.CompanyId == 1 && entity.AccountCode == sample.AccountCode);
+                if (account == null)
+                {
+                    Console.WriteLine($"Skipped sample donation type {sample.Name}: GL account {sample.AccountCode} is missing.");
+                    continue;
+                }
+
+                context.DonationTypes.Add(new Core.Domain.Donations.DonationType
+                {
+                    Name = sample.Name,
+                    Description = sample.Description,
+                    GlAccountId = account.Id
+                });
+            }
+
+            context.SaveChanges();
         }
 
         private static void SeedDonations(ApiDbContext context)

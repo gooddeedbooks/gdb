@@ -14,6 +14,10 @@ namespace Dto.Donations
         public string? DonorEmail { get; set; }
         [Range(typeof(decimal), "0.01", "9999999999999999.99", ErrorMessage = "Amount must be greater than zero.")]
         public decimal Amount { get; set; }
+        [Range(typeof(decimal), "0", "9999999999999999.99", ErrorMessage = "Advantage amount cannot be negative.")]
+        public decimal AdvantageAmount { get; set; }
+        public decimal EligibleAmount => Amount - AdvantageAmount;
+        public DateTime? ReceiptIssuedDate { get; set; }
         [Required(ErrorMessage = "Select a payment type."),
          RegularExpression("^(Cash|Cheque|Credit Card|Debit Card|E-Transfer)$", ErrorMessage = "Select Cash, Cheque, Credit Card, Debit Card or E-Transfer.")]
         public string PaymentType { get; set; } = string.Empty;

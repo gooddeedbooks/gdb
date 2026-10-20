@@ -19,6 +19,10 @@ namespace Core.Domain.Donations
         [Required, MaxLength(200)]
         public string Street { get; set; } = string.Empty;
 
+        [Required, MaxLength(100)]
+        public string City { get; set; } = string.Empty;
+        public bool IssueTaxReceipt { get; set; }
+
         [Required, MaxLength(2)]
         public string Province { get; set; } = string.Empty;
 

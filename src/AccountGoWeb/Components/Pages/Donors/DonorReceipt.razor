@@ -1,0 +1,169 @@
+@namespace GoodBooks.Donors.Components
+@using System.Net.Http.Json
+@using Dto.Donations
+@using Microsoft.Extensions.Configuration
+@inject IHttpClientFactory ClientFactory
+@inject IConfiguration Configuration
+@inject IJSRuntime JS
+
+<PageTitle>Official Donation Receipt</PageTitle>
+
+<style>
+    .cra-receipt { background: #dfe6cd; border-radius: 24px; padding: 24px 32px; max-width: 960px; color: #111; }
+    .cra-receipt .cra-flag { width: 72px; height: auto; flex: none; }
+    .cra-receipt h1 { font-size: 1.6rem; font-weight: 700; }
+    .cra-receipt .cra-box { background: #fff; border-radius: 12px; padding: 8px 20px; font-weight: 700; }
+    .cra-receipt .cra-line { border-bottom: 1px solid #000; min-height: 1.6rem; padding: 0 6px; }
+    .cra-receipt .cra-label { font-weight: 700; }
+    .cra-receipt .cra-note { font-size: .85rem; }
+    @@media print {
+        .app-header, .sidebar, .app-footer, .breadcrumb, .no-print { display: none !important; }
+        .cra-receipt { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+</style>
+
+<div class="container-fluid">
+    <div class="no-print mb-3 d-flex gap-2">
+        <a class="btn btn-secondary btn-sm" href="/donor-transactions">Back to Donor Transactions</a>
+        @if (receipt != null)
+        {
+            <button type="button" class="btn btn-primary btn-sm" @onclick="PrintAsync">
+                <i class="fas fa-print" aria-hidden="true"></i> Print
+            </button>
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger text-danger" role="alert">@errorMessage</div>
+    }
+    else if (receipt == null)
+    {
+        <div role="status"><span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Loading receipt...</div>
+    }
+    else
+    {
+        @if (string.IsNullOrWhiteSpace(receipt.CharityStreet) || string.IsNullOrWhiteSpace(receipt.CharityCity) || string.IsNullOrWhiteSpace(receipt.RegistrationNumber))
+        {
+            <div class="alert alert-warning no-print" role="alert">
+                The charity address or registration number is missing. Complete them under Administration &gt; Company before giving this receipt to the donor.
+            </div>
+        }
+        <div class="cra-receipt">
+            <div class="d-flex justify-content-between align-items-start">
+                <div class="d-flex align-items-center gap-3">
+                    <img class="cra-flag" src="/images/canada-flag.png" alt="Flag of Canada" />
+                    <h1>Official donation receipt for income tax purposes</h1>
+                </div>
+                <div class="cra-box">Receipt # @receipt.ReceiptNo</div>
+            </div>
+            <div class="row mt-3">
+                <div class="col-md-7">
+                    <div class="cra-label fs-5">@receipt.CharityName</div>
+                    <div class="cra-label">@CharityAddress</div>
+                    <div class="cra-label">Charitable registration #: @receipt.RegistrationNumber</div>
+                </div>
+                <div class="col-md-5">
+                    <div><span class="cra-label">Receipt issued</span> <span class="cra-line d-inline-block">@receipt.IssuedDate.ToString("dd/MM/yyyy")</span></div>
+                    <div class="mt-2"><span class="cra-label">Location issued</span> <span class="cra-line d-inline-block">@receipt.LocationIssued</span></div>
+                </div>
+            </div>
+            <div class="mt-4">
+                <span class="cra-label">Donated by</span>
+                <div class="cra-line">@receipt.DonorName</div>
+                <div class="cra-note">(First and last name, and initial)</div>
+            </div>
+            <div class="mt-3">
+                <span class="cra-label">Address</span>
+                <div class="cra-line">@DonorAddress</div>
+            </div>
+            <div class="row mt-3">
+                <div class="col-md-6">
+                    <span class="cra-label">Donation received</span>
+                    <div class="cra-line">@receipt.DonationDate.ToString("dd/MM/yyyy")</div>
+                    <div class="cra-note">(Date or year)</div>
+                </div>
+                <div class="col-md-6">
+                    <span class="cra-label">Amount of gift</span>
+                    <div class="cra-line">$@receipt.Amount.ToString("N2")</div>
+                </div>
+            </div>
+            @if (receipt.AdvantageAmount > 0)
+            {
+                <div class="row mt-2">
+                    <div class="col-md-6 offset-md-6">
+                        <span class="cra-label">Advantage</span>
+                        <div class="cra-line">$@receipt.AdvantageAmount.ToString("N2")</div>
+                    </div>
+                </div>
+            }
+            <div class="row mt-3">
+                <div class="col-md-6 offset-md-6">
+                    <span class="cra-label">Eligible amount of gift</span>
+                    <div class="cra-box mt-1">$@receipt.EligibleAmount.ToString("N2")</div>
+                </div>
+            </div>
+            <div class="row mt-4">
+                <div class="col-md-8 offset-md-4">
+                    <div class="cra-box d-flex align-items-end">
+                        <span class="cra-label me-2">Authorized signature:</span>
+                        <span class="cra-line flex-grow-1" style="min-height:2.5rem"></span>
+                    </div>
+                </div>
+            </div>
+            <div class="text-center mt-3 cra-label">Canada Revenue Agency &nbsp;-&nbsp; canada.ca/charities-giving</div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private DonationReceipt? receipt;
+    private string? errorMessage;
+
+    private string ApiUrl => (Configuration["ApiUrl"] ?? Environment.GetEnvironmentVariable("APIURL") ??
+"http://localhost:8001/api/").TrimEnd('/') + "/donations/DonationReceipt?id=";
+
+    private string CharityAddress => string.Join(", ", new[] { receipt!.CharityStreet, receipt.CharityCity, receipt.CharityProvince, receipt.CharityPostalCode }
+        .Where(part => !string.IsNullOrWhiteSpace(part)));
+
+    private string DonorAddress => string.Join(", ", new[] { receipt!.DonorStreet, receipt.DonorCity, receipt.DonorProvince, receipt.DonorPostalCode }
+        .Where(part => !string.IsNullOrWhiteSpace(part)));
+
+    protected override async Task OnParametersSetAsync()
+    {
+        receipt = null;
+        errorMessage = null;
+        try
+        {
+            using (var client = ClientFactory.CreateClient())
+            using (var response = await client.GetAsync(ApiUrl + Id))
+            {
+                if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                    errorMessage = "Donation not found. It may have been deleted.";
+                else if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
+                    errorMessage = "An official tax receipt has not been issued for this donation. Use \"Issue tax receipt\" on the donor's donations page.";
+                else
+                {
+                    response.EnsureSuccessStatusCode();
+                    receipt = await response.Content.ReadFromJsonAsync<DonationReceipt>();
+                }
+            }
+        }
+        catch (HttpRequestException)
+        {
+            errorMessage = "Unable to load the receipt. Check that the API is running and try again.";
+        }
+        catch (TaskCanceledException)
+        {
+            errorMessage = "Loading the receipt timed out. Try again.";
+        }
+    }
+
+    private async Task PrintAsync()
+    {
+        await JS.InvokeVoidAsync("window.print");
+    }
+}

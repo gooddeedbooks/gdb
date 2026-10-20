@@ -265,6 +265,10 @@ namespace Api.Controllers
                 company.Name = companyDto.Name;
                 company.ShortName = companyDto.ShortName;
                 company.CRA = companyDto.CRA;
+                company.Street = companyDto.Street;
+                company.City = companyDto.City;
+                company.Province = companyDto.Province;
+                company.PostalCode = companyDto.PostalCode;
 
                 _adminService.SaveCompany(company);
 

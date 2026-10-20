@@ -1,0 +1,9 @@
+@page "/donor-transactions/{Id:int}/receipt"
+@rendermode InteractiveServer
+
+<GoodBooks.Donors.Components.DonorReceipt Id="Id" />
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+}

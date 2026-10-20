@@ -70,6 +70,12 @@
                         <ValidationMessage class="text-danger" For="() => model.Street" />
                     </div>
                     <div class="col-md-6">
+                        <label class="form-label" for="donor-city">City</label>
+                        <InputText id="donor-city" class="form-control form-control-themed"
+                                   @bind-Value="model.City" maxlength="100" autocomplete="address-level2" />
+                        <ValidationMessage class="text-danger" For="() => model.City" />
+                    </div>
+                    <div class="col-md-6">
                         <label class="form-label" for="donor-province">Province</label>
                         <InputSelect id="donor-province" class="form-select form-control-themed"
                                      @bind-Value="model.Province" autocomplete="address-level1">
@@ -108,11 +114,23 @@
                                    @bind-Value="model.Email" maxlength="254" autocomplete="email" />
                         <ValidationMessage class="text-danger" For="() => model.Email" />
                     </div>
+                    <div class="col-md-6 d-flex align-items-end">
+                        <div class="form-check">
+                            <InputCheckbox id="donor-issue-tax-receipt" class="form-check-input" @bind-Value="model.IssueTaxReceipt" />
+                            <label class="form-check-label" for="donor-issue-tax-receipt">Issue tax receipt</label>
+                        </div>
+                    </div>
                 </div>
                 <div class="d-flex gap-2 mt-4">
                     <button class="btn btn-primary" type="submit"><i class="fas fa-save" aria-hidden="true"></i> @(isSaving
                                             ? "Saving..." : "Save")</button>
                         <a class="btn btn-secondary" href="/donors">Cancel</a>
+                        @if (Id != 0)
+                        {
+                            <a class="btn btn-success ms-auto" href="/donor-transactions?donorId=@Id">
+                                <i class="fas fa-file-invoice" aria-hidden="true"></i> Donor Transactions
+                            </a>
+                        }
                     </div>
                 </fieldset>
             </EditForm>
@@ -136,6 +154,7 @@
     private bool isLoaded;
     private bool isSaving;
     private string? errorMessage;
+    private int savedDonorId;
 
     private string ApiUrl
     {
@@ -212,14 +231,15 @@
     private async Task SaveDonorAsync()
     {
         if (isSaving) return;
-        isSaving = true;
         errorMessage = null;
+        isSaving = true;
         try
         {
+            var donorId = Id != 0 ? Id : savedDonorId;
             using (var client = ClientFactory.CreateClient())
-            using (var response = Id == 0
+            using (var response = donorId == 0
                 ? await client.PostAsJsonAsync(ApiUrl, model)
-                : await client.PutAsJsonAsync(ApiUrl + "/" + Id, model))
+                : await client.PutAsJsonAsync(ApiUrl + "/" + donorId, model))
             {
                 if (!response.IsSuccessStatusCode)
                 {
@@ -239,6 +259,12 @@ System.Net.HttpStatusCode.Forbidden)
                         errorMessage = $"The API could not save the donor (HTTP {(int)response.StatusCode} {response.StatusCode}). Your entered details have been kept. Check the Donors list before retrying to avoid creating a duplicate, and contact your administrator if the problem continues.";
                     return;
                 }
+                if (donorId == 0)
+                {
+                    var created = await response.Content.ReadFromJsonAsync<Donor>();
+                    donorId = savedDonorId = created?.Id ?? 0;
+                }
+
                 Navigation.NavigateTo("/donors", ForceLoad);
             }
         }
