@@ -5,6 +5,10 @@ GoodDeedBooks is an open-source business accounting application with a focus on 
 ## What the application does
 
 - Supports accounting workflows such as accounts receivable, accounts payable, inventory, and financial management.
+- Edits existing sales orders from **Accounts Receivable > Sales Orders**: select an order and choose **Edit** to change its customer, payment term, and line items, then save the original order. Lines already used by invoices cannot be removed.
+- Creates invoices from selected sales orders using **Create Invoice**, prefilling the customer, payment terms, and remaining uninvoiced quantities with their prices, discounts, and units.
+- Suggests the next numeric invoice number (starting at 1 for an empty invoice ledger), allows manual overrides, and rejects duplicate numbers. Invoice rows can be deleted before saving and show a read-only line amount; shipping is saved with the invoice and added to the read-only **Total Invoice**. A read-only **Tax (included)** field uses the active taxes in the customer's assigned tax group, independently of item tax groups, and displays their percentages in its label (for example, **Tax 5% + 7% (included)**). The same calculation is used when posting invoices.
+- Manages shared units of measure under **Inventory Control > Units of Measure**, with code and description lookup values used by item and transaction dropdowns. Units already in use cannot be deleted.
 - Manages donors and donation types, records donation transactions and payment details, and associates donations with general-ledger accounts.
 - Supports Canadian tax-receipt workflows, including receipt generation and PDF output.
 

@@ -7,6 +7,10 @@
     h5 {
         color: var(--bs-white, #fff) !important;
     }
+
+    .invoice-totals {
+        width: min(100%, 26rem);
+    }
 </style>
 
 <div class="container-fluid">
@@ -42,7 +46,7 @@
                         <div class="row mb-3">
                             <div class="col-md-6">
                                 <label class="form-label"><strong>Invoice ID</strong></label>
-                                <input type="text" class="form-control form-control-themed" @bind="invoiceId" readonly />
+                                <input type="number" min="1" step="1" class="form-control form-control-themed" @bind="invoiceNumber" />
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label"><strong>Invoice Date</strong></label>
@@ -53,7 +57,7 @@
                         <div class="row mb-3">
                             <div class="col-md-6">
                                 <label class="form-label"><strong>Customer</strong></label>
-                                <select class="form-control form-control-themed" @bind="customerId">
+                                <select class="form-control form-control-themed" @bind="customerId" @bind:after="RecalculateAsync" disabled="@IsFromOrder">
                                     <option value="0">-- Select Customer --</option>
                                     @foreach (var customer in customers)
                                     {
@@ -73,14 +77,6 @@
                             </div>
                         </div>
 
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label"><strong>Total Amount</strong></label>
-                                <input type="text" class="form-control form-control-themed" value="@FormattedTotalAmount"
-                                       readonly />
-                            </div>
-                        </div>
-
                         <h5 class="mt-4 mb-3">Line Items</h5>
                         <div class="table-responsive">
                             <table class="table table-sm table-bordered table-dark">
@@ -88,9 +84,11 @@
                                     <tr>
                                         <th>Item</th>
                                         <th>Quantity</th>
-                                        <th>Amount</th>
+                                        <th>Price per Unit</th>
                                         <th>Discount (%)</th>
                                         <th>Unit</th>
+                                        <th>Amount</th>
+                                        <th>Action</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -98,10 +96,10 @@
                                     {
                                         @foreach (var line in lineItems)
                                         {
-                                            <tr>
+                                            <tr @key="line">
                                                 <td>
                                                     <select class="form-control form-control-sm form-control-themed"
-                                                            @bind="line.ItemId">
+                                                            @bind="line.ItemId" @bind:after="RecalculateAsync" disabled="@(IsFromOrder && line.Id > 0)">
                                                         <option value="0">-- Select Item --</option>
                                                         @foreach (var item in items)
                                                         {
@@ -111,25 +109,36 @@
                                                 </td>
                                                 <td>
                                                     <input type="number" class="form-control form-control-sm form-control-themed"
-                                                           @bind="line.Quantity" step="0.01" placeholder="1" />
+                                                           @bind="line.Quantity" @bind:after="RecalculateAsync" step="0.01" min="0.01" placeholder="1" />
                                                 </td>
                                                 <td>
                                                     <input type="number" class="form-control form-control-sm form-control-themed"
-                                                           @bind="line.Amount" step="0.01" placeholder="0.00" />
+                                                           @bind="line.Amount" @bind:after="RecalculateAsync" step="0.01" placeholder="0.00" />
                                                 </td>
                                                 <td>
                                                     <input type="number" class="form-control form-control-sm form-control-themed"
-                                                           @bind="line.Discount" step="0.01" placeholder="0.00" />
+                                                           @bind="line.Discount" @bind:after="RecalculateAsync" step="0.01" placeholder="0.00" />
                                                 </td>
                                                 <td>
                                                     <select class="form-control form-control-sm form-control-themed"
-                                                            @bind="line.MeasurementId">
+                                                            @bind="line.MeasurementId" disabled="@(IsFromOrder && line.Id > 0)">
                                                         <option value="0">-- Select Unit --</option>
                                                         @foreach (var measurement in measurements)
                                                         {
                                                             <option value="@measurement.id">@measurement.description</option>
                                                         }
                                                     </select>
+                                                </td>
+                                                <td>
+                                                    <input type="text" class="form-control form-control-sm form-control-themed"
+                                                           value="@FormatCurrency(GetLineAmount(line))" readonly aria-label="Line amount" />
+                                                </td>
+                                                <td>
+                                                    <button type="button" class="btn btn-outline-danger btn-sm"
+                                                            aria-label="Delete line item" title="Delete line item" disabled="@isSaving"
+                                                            @onclick="() => RemoveLineItem(line)">
+                                                        <i class="fas fa-trash" aria-hidden="true"></i>
+                                                    </button>
                                                 </td>
                                             </tr>
                                         }
@@ -138,17 +147,50 @@
                             </table>
                         </div>
 
-                        <div class="mt-2">
-                            <button type="button" class="btn btn-outline-primary btn-sm" @onclick="AddLineItem">
+                        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mt-3">
+                            <button type="button" class="btn btn-outline-primary btn-sm" @onclick="AddLineItem" disabled="@isSaving">
                                 <i class="fas fa-plus"></i>
                                 Add Row
                             </button>
+                            <div class="invoice-totals">
+                                <div class="row g-2 align-items-center mb-2">
+                                    <label class="col-6 col-form-label text-end" for="invoice-total"><strong>Total Amount</strong></label>
+                                    <div class="col-6">
+                                        <input id="invoice-total" type="text" class="form-control form-control-themed"
+                                               value="@FormatCurrency(totalAmount)" readonly />
+                                    </div>
+                                </div>
+                                <div class="row g-2 align-items-center mb-2">
+                                    <label class="col-6 col-form-label text-end" for="invoice-shipping"><strong>Shipping</strong></label>
+                                    <div class="col-6">
+                                        <input id="invoice-shipping" type="number" min="0" step="0.01" class="form-control form-control-themed"
+                                               @bind="shipping" disabled="@isSaving" />
+                                    </div>
+                                </div>
+                                <div class="row g-2 align-items-center mb-2">
+                                    <label class="col-6 col-form-label text-end" for="invoice-tax"
+                                           title="Tax is calculated from the customer's tax group and is included in item prices.">
+                                        <strong>@TaxLabel</strong>
+                                    </label>
+                                    <div class="col-6">
+                                        <input id="invoice-tax" type="text" class="form-control form-control-themed"
+                                               value="@FormatCurrency(taxAmount)" readonly />
+                                    </div>
+                                </div>
+                                <div class="row g-2 align-items-center">
+                                    <label class="col-6 col-form-label text-end" for="invoice-grand-total"><strong>Total Invoice</strong></label>
+                                    <div class="col-6">
+                                        <input id="invoice-grand-total" type="text" class="form-control form-control-themed"
+                                               value="@FormatCurrency(TotalInvoice)" readonly />
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
 
                 <div class="mt-4">
-                    <button class="btn btn-primary btn-sm" @onclick="SaveSalesInvoice">Save</button>
+                    <button class="btn btn-primary btn-sm" @onclick="SaveSalesInvoice" disabled="@(isSaving || !isLoaded)">Save</button>
                     <a href="/Sales/SalesInvoices" class="btn btn-secondary btn-sm ms-2">Close</a>
                 </div>
             </div>
@@ -191,9 +233,11 @@
         public string description { get; set; } = "";
     }
 
+    [Parameter]
     [SupplyParameterFromQuery(Name = "id")]
     public int Id { get; set; }
 
+    [Parameter]
     [SupplyParameterFromQuery(Name = "orderId")]
     public int? OrderId { get; set; }
 
@@ -204,16 +248,35 @@
     private NavigationManager Navigation { get; set; } = null!;
 
     private bool loading = true;
+    private bool isSaving;
+    private bool isLoaded;
+    private bool IsFromOrder => OrderId.GetValueOrDefault() > 0;
     private string? errorMessage = null;
 
     private int invoiceId = 0;
+    private long invoiceNumber;
     private DateTime invoiceDate = DateTime.Now;
     private int customerId = 0;
     private int paymentTermId = 0;
     private decimal totalAmount = 0;
     private List<LineItem> lineItems = new();
 
-    private string FormattedTotalAmount => "$" + totalAmount.ToString("N2", CultureInfo.InvariantCulture);
+    private decimal shipping;
+    private decimal taxAmount;
+    private IList<decimal> taxRates = new List<decimal>();
+    private string TaxLabel => "Tax " +
+        (taxRates.Count == 0 ? "0%" : string.Join(" + ", taxRates.Select(rate => rate.ToString("0.##", CultureInfo.InvariantCulture) + "%"))) +
+        " (included)";
+    private int taxRequestVersion;
+    private decimal TotalInvoice => totalAmount + shipping;
+
+    private static string FormatCurrency(decimal value) => "$" + value.ToString("N2", CultureInfo.InvariantCulture);
+
+    private static decimal GetLineAmount(LineItem line)
+    {
+        var total = (line.Quantity ?? 0) * (line.Amount ?? 0);
+        return total - ((line.Discount ?? 0) / 100) * total;
+    }
 
     private List<Customer> customers = new();
     private List<Item> items = new();
@@ -230,6 +293,31 @@
         await LoadPaymentTerms();
         await LoadMeasurements();
         await LoadInvoiceData(finalId);
+        await LoadTaxAsync();
+        if (isLoaded && invoiceId == 0)
+        {
+            try
+            {
+                var apiurl = Environment.GetEnvironmentVariable("APIURL") ?? "http://localhost:8001/api/";
+                using var client = ClientFactory.CreateClient();
+                invoiceNumber = await client.GetFromJsonAsync<long>($"{apiurl}sales/NextInvoiceNumber");
+            }
+            catch (HttpRequestException)
+            {
+                isLoaded = false;
+                errorMessage = "Unable to generate an invoice number. Reload the page before saving.";
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                isLoaded = false;
+                errorMessage = "The API returned an invalid invoice number. Reload the page before saving.";
+            }
+            catch (TaskCanceledException)
+            {
+                isLoaded = false;
+                errorMessage = "Generating an invoice number timed out. Reload the page before saving.";
+            }
+        }
     }
 
     private async Task LoadCustomers()
@@ -320,6 +408,7 @@
             if (saleOrderId == 0)
             {
                 lineItems.Add(new LineItem { ItemId = 0, Quantity = 1, Amount = null, Discount = null, MeasurementId = 0 });
+                isLoaded = true;
                 return;
             }
 
@@ -345,7 +434,9 @@
                 {
                     // Parse invoice/order data
                     if (invoiceData.TryGetProperty("id", out var idElem))
-                        invoiceId = OrderId.HasValue ? 0 : idElem.GetInt32(); // New invoice gets id=0
+                        invoiceId = IsFromOrder ? 0 : idElem.GetInt32();
+                    if (!IsFromOrder && invoiceData.TryGetProperty("no", out var numberElem))
+                        long.TryParse(numberElem.GetString(), out invoiceNumber);
 
                     if (invoiceData.TryGetProperty("customerId", out var custElem))
                         customerId = custElem.GetInt32();
@@ -354,11 +445,6 @@
                     if (invoiceData.TryGetProperty("invoiceDate", out var invDateElem))
                     {
                         if (DateTime.TryParse(invDateElem.GetString(), out var date))
-                            invoiceDate = date;
-                    }
-                    else if (invoiceData.TryGetProperty("orderDate", out var ordDateElem))
-                    {
-                        if (DateTime.TryParse(ordDateElem.GetString(), out var date))
                             invoiceDate = date;
                     }
 
@@ -370,17 +456,22 @@
                             paymentTermId = 0;
                     }
 
+                    if (!IsFromOrder)
+                        shipping = GetJsonDecimal(invoiceData, "shipping") ?? 0;
+
                     // Parse line items - works for both orders and invoices
-                    var linesProperty = OrderId.HasValue ? "salesOrderLines" : "salesInvoiceLines";
+                    var linesProperty = IsFromOrder ? "salesOrderLines" : "salesInvoiceLines";
                     if (invoiceData.TryGetProperty(linesProperty, out var linesElem) && linesElem.ValueKind == JsonValueKind.Array)
                     {
                         foreach (var lineElem in linesElem.EnumerateArray())
                         {
+                            var quantity = GetJsonDecimal(lineElem, IsFromOrder ? "remainingQtyToInvoice" : "quantity");
+                            if (IsFromOrder && quantity.GetValueOrDefault() <= 0) continue;
                             var line = new LineItem
                             {
                                 Id = GetJsonInt(lineElem, "id") ?? 0, // Capture the order line ID!
                                 ItemId = GetJsonInt(lineElem, "itemId"),
-                                Quantity = GetJsonDecimal(lineElem, "quantity"),
+                                Quantity = quantity,
                                 Amount = GetJsonDecimal(lineElem, "amount"),
                                 Discount = GetJsonDecimal(lineElem, "discount"),
                                 MeasurementId = GetJsonInt(lineElem, "measurementId")
@@ -390,6 +481,9 @@
                     }
 
                     CalculateTotalAmount();
+                    isLoaded = !IsFromOrder || lineItems.Count > 0;
+                    if (!isLoaded)
+                        errorMessage = "This sales order has no remaining quantities to invoice.";
                 }
             }
             else
@@ -413,7 +507,7 @@
     {
         if (elem.TryGetProperty(propName, out var prop))
         {
-            if (prop.TryGetInt32(out var val))
+            if (prop.ValueKind == JsonValueKind.Number && prop.TryGetInt32(out var val))
                 return val;
         }
         return null;
@@ -423,7 +517,7 @@
     {
         if (elem.TryGetProperty(propName, out var prop))
         {
-            if (prop.TryGetDecimal(out var val))
+            if (prop.ValueKind == JsonValueKind.Number && prop.TryGetDecimal(out var val))
                 return val;
         }
         return null;
@@ -431,15 +525,55 @@
 
     private void CalculateTotalAmount()
     {
-        totalAmount = lineItems.Sum(line =>
+        totalAmount = lineItems.Sum(GetLineAmount);
+    }
+
+    private async Task RecalculateAsync()
+    {
+        CalculateTotalAmount();
+        await LoadTaxAsync();
+    }
+
+    private async Task LoadTaxAsync()
+    {
+        var version = ++taxRequestVersion;
+        var lines = lineItems
+            .Where(line => line.ItemId.GetValueOrDefault() > 0 && line.Quantity.GetValueOrDefault() > 0 && line.Amount.GetValueOrDefault() > 0)
+            .Select(line => new
+            {
+                ItemId = line.ItemId!.Value,
+                Quantity = line.Quantity!.Value,
+                Amount = line.Amount!.Value,
+                Discount = line.Discount ?? 0
+            }).ToList();
+
+        if (customerId <= 0)
         {
-            var qty = line.Quantity ?? 0;
-            var amt = line.Amount ?? 0;
-            var disc = line.Discount ?? 0;
-            var total = qty * amt;
-            var discount = (disc / 100) * total;
-            return total - discount;
-        });
+            taxAmount = 0;
+            taxRates.Clear();
+            return;
+        }
+
+        try
+        {
+            var apiurl = Environment.GetEnvironmentVariable("APIURL") ?? "http://localhost:8001/api/";
+            using var client = ClientFactory.CreateClient();
+            var response = await client.PostAsJsonAsync($"{apiurl}sales/CalculateInvoiceTax", new { CustomerId = customerId, Lines = lines });
+            response.EnsureSuccessStatusCode();
+            var tax = await response.Content.ReadFromJsonAsync<Dto.Sales.InvoiceTaxResult>();
+            if (tax == null)
+                throw new System.Text.Json.JsonException("The invoice tax response was empty.");
+            if (version == taxRequestVersion)
+            {
+                taxAmount = tax.Amount;
+                taxRates = tax.Rates;
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException or TaskCanceledException)
+        {
+            if (version == taxRequestVersion)
+                errorMessage = "Unable to calculate tax for this customer.";
+        }
     }
 
     private void AddLineItem()
@@ -448,10 +582,27 @@
         StateHasChanged();
     }
 
+    private async Task RemoveLineItem(LineItem line)
+    {
+        lineItems.Remove(line);
+        await RecalculateAsync();
+    }
+
     private async Task SaveSalesInvoice()
     {
+        if (isSaving || !isLoaded) return;
         try
         {
+            if (invoiceNumber <= 0)
+            {
+                errorMessage = "Invoice ID must be a positive whole number.";
+                return;
+            }
+            if (shipping < 0)
+            {
+                errorMessage = "Shipping cannot be negative.";
+                return;
+            }
             // Validate required fields
             if (customerId == 0)
             {
@@ -476,43 +627,45 @@
             }
 
             // Check if all line items have valid data
-            var invalidLines = lineItems.Where(l => l.ItemId == 0 || l.MeasurementId == 0 || l.Quantity == 0 || l.Amount ==
-            0).ToList();
+            var invalidLines = lineItems.Where(l => l.ItemId.GetValueOrDefault() <= 0 ||
+                l.MeasurementId.GetValueOrDefault() <= 0 || l.Quantity.GetValueOrDefault() <= 0 ||
+                l.Amount.GetValueOrDefault() <= 0 || l.Discount.GetValueOrDefault() < 0 ||
+                l.Discount.GetValueOrDefault() > 100).ToList();
             if (invalidLines.Any())
             {
-                errorMessage = "All line items must have Item, Unit, Quantity, and Amount selected";
+                errorMessage = "All line items must have Item, Unit, Quantity, and Price per Unit selected";
                 StateHasChanged();
                 return;
             }
 
             CalculateTotalAmount();
+            isSaving = true;
             string apiurl = System.Environment.GetEnvironmentVariable("APIURL") ?? "http://localhost:8001/api/";
-
-            // Use OrderId if provided, otherwise use Id
-            var finalId = OrderId ?? Id;
 
             // Build payload conditionally - only include FromSalesOrderId if we're creating from an existing order
             var payload = new Dictionary<string, object>
 {
 { "Id", invoiceId },
+{ "No", invoiceNumber.ToString(CultureInfo.InvariantCulture) },
 { "CustomerId", customerId },
 { "InvoiceDate", invoiceDate },
 { "PaymentTermId", paymentTermId },
+{ "Shipping", shipping },
 { "SalesInvoiceLines", lineItems.Select(line => new
 {
 Id = line.Id, // Include the SalesOrderLine.Id to prevent duplication
 ItemId = line.ItemId,
 Quantity = line.Quantity,
 Amount = line.Amount,
-Discount = line.Discount,
+Discount = line.Discount ?? 0,
 MeasurementId = line.MeasurementId
 }).ToList() }
 };
 
             // Only include FromSalesOrderId if we're creating from an existing order
-            if (finalId > 0)
+            if (IsFromOrder)
             {
-                payload["FromSalesOrderId"] = finalId;
+                payload["FromSalesOrderId"] = OrderId!.Value;
             }
 
             var client = ClientFactory.CreateClient();
@@ -537,6 +690,10 @@ MeasurementId = line.MeasurementId
         {
             errorMessage = $"Error saving invoice: {ex.Message}";
             StateHasChanged();
+        }
+        finally
+        {
+            isSaving = false;
         }
     }
 }

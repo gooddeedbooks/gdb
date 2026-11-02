@@ -318,6 +318,7 @@ namespace Api.Controllers
                     SalesInvoiceLines = new List<Dto.Sales.SalesInvoiceLine>(),
                     PaymentTermId = salesInvoice.PaymentTermId,
                     ReferenceNo = salesInvoice.ReferenceNo,
+                    Shipping = salesInvoice.ShippingHandlingCharge,
                     Posted = salesInvoice.GeneralLedgerHeaderId != null
                 };
 
@@ -620,12 +621,8 @@ namespace Api.Controllers
             {
                 if (!ModelState.IsValid)
                 {
-                    errors = new string[ModelState.ErrorCount];
-                    foreach (var val in ModelState.Values)
-                        for (int i = 0; i < ModelState.ErrorCount; i++)
-                            errors[i] = val.Errors[i].ErrorMessage;
-
-                    return new BadRequestObjectResult(errors);
+                    return BadRequest(ModelState.Values.SelectMany(value => value.Errors)
+                        .Select(error => error.ErrorMessage).ToArray());
                 }
 
                 bool isNew = salesOrderDto.Id == 0;
@@ -647,6 +644,8 @@ namespace Api.Controllers
                 else
                 {
                     salesOrder = _salesService.GetSalesOrderById(salesOrderDto.Id);
+                    if (salesOrder == null)
+                        return NotFound(new { error = "Sales order not found. Your changes were not saved." });
                 }
 
                 salesOrder.CustomerId = salesOrderDto.CustomerId;
@@ -658,8 +657,10 @@ namespace Api.Controllers
                 {
                     if (!isNew)
                     {
-                        var existingLine = salesOrder.SalesOrderLines.Where(id => id.Id == line.Id).FirstOrDefault();
-                        if (salesOrder.SalesOrderLines.Where(id => id.Id == line.Id).FirstOrDefault() != null)
+                        var existingLine = line.Id > 0
+                            ? salesOrder.SalesOrderLines.FirstOrDefault(existing => existing.Id == line.Id)
+                            : null;
+                        if (existingLine != null)
                         {
                             existingLine!.Amount = line.Amount.GetValueOrDefault();
                             existingLine.Discount = line.Discount.GetValueOrDefault();
@@ -699,7 +700,7 @@ namespace Api.Controllers
                 else
                 {
                     var deleted = (from line in salesOrder.SalesOrderLines
-                                   where !salesOrderDto.SalesOrderLines.Any(x => x.Id == line.Id)
+                                   where line.Id > 0 && !salesOrderDto.SalesOrderLines.Any(x => x.Id == line.Id)
                                    select line).ToList();
 
                     foreach (var line in deleted)
@@ -757,6 +758,38 @@ namespace Api.Controllers
             }
         }
 
+        /// <summary>Suggests the next positive invoice number without reserving it.</summary>
+        /// <returns>One for an empty invoice ledger, otherwise the next numeric invoice number.</returns>
+        [HttpGet("NextInvoiceNumber")]
+        public IActionResult NextInvoiceNumber()
+        {
+            var maximum = _salesService.GetSalesInvoices()
+                .Select(invoice => long.TryParse(invoice.No, out var number) && number > 0 ? number : 0)
+                .DefaultIfEmpty(0).Max();
+            return Ok(checked(maximum + 1));
+        }
+
+        /// <summary>Calculates the output tax included in invoice lines for the customer's tax profile.</summary>
+        /// <param name="request">The customer and invoice lines to evaluate.</param>
+        /// <returns>The rounded included tax amount and the customer's configured tax percentages.</returns>
+        [HttpPost("CalculateInvoiceTax")]
+        public IActionResult CalculateInvoiceTax([FromBody] Dto.Sales.InvoiceTaxRequest request)
+        {
+            if (request == null || request.CustomerId <= 0)
+                return BadRequest(new[] { "Select a customer to calculate invoice tax." });
+
+            var tax = request.Lines
+                .Where(line => line.ItemId > 0 && line.Quantity > 0 && line.Amount > 0)
+                .SelectMany(line => _financialService.ComputeOutputTax(request.CustomerId, line.ItemId,
+                    line.Quantity, line.Amount, Math.Clamp(line.Discount, 0, 100)))
+                .Sum(lineTax => lineTax.Value);
+            return Ok(new Dto.Sales.InvoiceTaxResult
+            {
+                Amount = Math.Round(tax, 2, MidpointRounding.ToEven),
+                Rates = _taxService.GetCustomerTaxes(request.CustomerId).Select(t => t.Rate).ToList()
+            });
+        }
+
         [HttpPost]
         [Route("SaveSalesInvoice")]
         public IActionResult SaveSalesInvoice([FromBody] Dto.Sales.SalesInvoice salesInvoiceDto)
@@ -776,6 +809,19 @@ namespace Api.Controllers
                 }
 
                 bool isNew = salesInvoiceDto.Id == 0;
+                if (salesInvoiceDto.Shipping < 0)
+                    return BadRequest(new[] { "Shipping cannot be negative." });
+                string? invoiceNumber = null;
+                if (!string.IsNullOrWhiteSpace(salesInvoiceDto.No))
+                {
+                    if (!long.TryParse(salesInvoiceDto.No, out var number) || number <= 0)
+                        return BadRequest(new[] { "Invoice ID must be a positive whole number." });
+                    invoiceNumber = number.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    if (_salesService.GetSalesInvoices().Any(invoice => invoice.Id != salesInvoiceDto.Id &&
+                        (invoice.No == invoiceNumber ||
+                         (long.TryParse(invoice.No, out var existingNumber) && existingNumber == number))))
+                        return Conflict(new[] { "This invoice number already exists. Enter a different Invoice ID." });
+                }
                 Core.Domain.Sales.SalesInvoiceHeader? salesInvoice = null;
                 Core.Domain.Sales.SalesOrderHeader? salesOrder = null;
 
@@ -795,14 +841,34 @@ namespace Api.Controllers
                     {
                         // else,  your invoice is created from existing (open) sales order.
                         salesOrder = _salesService.GetSalesOrderById(salesInvoiceDto.FromSalesOrderId.GetValueOrDefault());
+                        if (salesOrder == null)
+                            return NotFound(new { error = "The source sales order no longer exists." });
+                        if (salesInvoiceDto.CustomerId != salesOrder.CustomerId)
+                            return BadRequest(new[] { "The invoice customer must match the source sales order." });
+                        if (salesInvoiceDto.SalesInvoiceLines == null || salesInvoiceDto.SalesInvoiceLines.Count == 0)
+                            return BadRequest(new[] { "Enter at least one invoice line." });
+
+                        foreach (var group in salesInvoiceDto.SalesInvoiceLines.Where(line => line.Id > 0).GroupBy(line => line.Id))
+                        {
+                            var sourceLine = salesOrder.SalesOrderLines.FirstOrDefault(line => line.Id == group.Key);
+                            if (sourceLine == null)
+                                return BadRequest(new[] { "An invoice line does not belong to the selected sales order." });
+                            if (group.Any(line => line.ItemId != sourceLine.ItemId || line.MeasurementId != sourceLine.MeasurementId))
+                                return BadRequest(new[] { "Ordered invoice lines must retain their original item and unit." });
+                            if (group.Any(line => line.Quantity.GetValueOrDefault() <= 0) ||
+                                group.Sum(line => line.Quantity.GetValueOrDefault()) > sourceLine.GetRemainingQtyToInvoice())
+                                return BadRequest(new[] { "Invoice quantity must be positive and cannot exceed the remaining order quantity. Reload the order before retrying." });
+                        }
                     }
 
                     // populate invoice header
                     salesInvoice = new Core.Domain.Sales.SalesInvoiceHeader();
+                    salesInvoice.No = invoiceNumber!;
                     salesInvoice.CustomerId = salesInvoiceDto.CustomerId;
                     salesInvoice.Date = salesInvoiceDto.InvoiceDate;
                     salesInvoice.PaymentTermId = salesInvoiceDto.PaymentTermId;
                     salesInvoice.ReferenceNo = salesInvoiceDto.ReferenceNo;
+                    salesInvoice.ShippingHandlingCharge = salesInvoiceDto.Shipping;
 
                     foreach (var line in salesInvoiceDto.SalesInvoiceLines!)
                     {
@@ -841,14 +907,19 @@ namespace Api.Controllers
                 {
                     // if you reach here, you are updating existing invoice.
                     salesInvoice = _salesService.GetSalesInvoiceById(salesInvoiceDto.Id);
+                    if (salesInvoice == null)
+                        return NotFound(new[] { "The invoice no longer exists." });
 
                     if (salesInvoice.GeneralLedgerHeaderId.HasValue)
                         throw new Exception("Invoice is already posted. Update is not allowed.");
 
+                    if (invoiceNumber != null)
+                        salesInvoice.No = invoiceNumber;
                     salesInvoice.Date = salesInvoiceDto.InvoiceDate;
                     salesInvoice.PaymentTermId = salesInvoiceDto.PaymentTermId;
                     salesInvoice.ReferenceNo = salesInvoiceDto.ReferenceNo;
                     salesInvoice.CustomerId = salesInvoiceDto.CustomerId;
+                    salesInvoice.ShippingHandlingCharge = salesInvoiceDto.Shipping;
 
                     foreach (var line in salesInvoiceDto.SalesInvoiceLines!)
                     {
@@ -1302,10 +1373,8 @@ namespace Api.Controllers
 
                     if (_taxService != null)
                     {
-                        var taxes = _taxService.GetIntersectionTaxes(line.ItemId, salesInvoice.CustomerId,
-                            salesInvoice.Customer.Party.PartyType);
-
-                        totalTax += _taxService.GetSalesLineTaxAmount(line.Quantity, line.Amount, line.Discount, taxes);
+                        totalTax += _financialService.ComputeOutputTax(salesInvoice.CustomerId,
+                            line.ItemId, line.Quantity, line.Amount, line.Discount).Sum(t => t.Value);
 
                     }
                     salesInvoiceDto.SalesInvoiceLines.Add(lineDto);

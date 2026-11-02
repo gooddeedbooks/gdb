@@ -126,8 +126,6 @@ namespace Services.TaxSystem
         {
             decimal taxAmount = 0, amountXquantity = 0, discountAmount = 0, subTotalAmount = 0;
 
-            var item = _itemRepo.GetById(itemId);
-            var customer = _customerRepo.GetById(customerId);
             var taxes = new List<KeyValuePair<int, decimal>>();
 
             amountXquantity = amount * quantity;
@@ -137,15 +135,30 @@ namespace Services.TaxSystem
 
             subTotalAmount = amountXquantity - discountAmount;
 
-            var intersectionTaxes = GetIntersectionTaxes(itemId, customerId, Core.Domain.PartyTypes.Customer);
-
-            foreach (var tax in intersectionTaxes)
+            foreach (var tax in GetCustomerTaxes(customerId))
             {
                 taxAmount = subTotalAmount - (subTotalAmount / (1 + (tax.Rate / 100)));
                 taxes.Add(new KeyValuePair<int, decimal>(tax.Id, taxAmount));
             }
 
             return taxes;
+        }
+
+        /// <summary>Gets active taxes from the customer's assigned active tax group.</summary>
+        /// <param name="customerId">The customer identifier.</param>
+        /// <returns>The taxes applicable to the customer.</returns>
+        public IEnumerable<Tax> GetCustomerTaxes(int customerId)
+        {
+            var customer = _customerRepo.GetAllIncluding(c => c.TaxGroup,
+                c => c.TaxGroup.TaxGroupTax).FirstOrDefault(c => c.Id == customerId);
+            if (customer == null)
+                throw new KeyNotFoundException("Customer not found.");
+            if (customer.TaxGroup == null || !customer.TaxGroup.IsActive)
+                return Enumerable.Empty<Tax>();
+
+            var taxIds = customer.TaxGroup.TaxGroupTax.Select(t => t.TaxId).ToList();
+            return _taxRepo.GetAllIncluding()
+                .Where(t => t.IsActive && taxIds.Contains(t.Id)).ToList();
         }
 
         public decimal PriceBeforeTax(int itemId)

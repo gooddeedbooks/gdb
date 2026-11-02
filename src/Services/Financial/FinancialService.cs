@@ -543,26 +543,7 @@ namespace Services.Financial
         /// <returns></returns>
         public List<KeyValuePair<int, decimal>> ComputeOutputTax(int customerId, int itemId, decimal quantity, decimal amount, decimal discount)
         {
-            decimal taxAmount, amountXquantity, discountAmount = 0, subTotalAmount;
-
-            var taxes = new List<KeyValuePair<int, decimal>>();
-
-            amountXquantity = amount * quantity;
-
-            if (discount > 0)
-                discountAmount = (discount / 100) * amountXquantity;
-
-            subTotalAmount = amountXquantity - discountAmount;
-
-            var intersectionTaxes = _taxService.GetIntersectionTaxes(itemId, customerId, PartyTypes.Customer);
-
-            foreach (var tax in intersectionTaxes)
-            {
-                taxAmount = subTotalAmount - (subTotalAmount / (1 + (tax.Rate / 100)));
-                taxes.Add(new KeyValuePair<int, decimal>(tax.Id, taxAmount));
-            }
-
-            return taxes;
+            return _taxService.GetSalesTaxes(customerId, itemId, quantity, amount, discount);
         }
 
         public GeneralLedgerSetting GetGeneralLedgerSetting(int? companyId = null)

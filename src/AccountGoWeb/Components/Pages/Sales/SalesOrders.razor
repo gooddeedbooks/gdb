@@ -8,21 +8,22 @@
         <h1>Sales Orders</h1>
 
         <div class="toolbar-actions">
-            <a class="btn new-order-btn btn-sm" href="/Sales/AddSalesOrder">
-                <i class="fas fa-plus"></i>
+            <a class="btn btn-primary" href="/Sales/AddSalesOrder">
+                <i class="fas fa-plus" aria-hidden="true"></i>
                 New Sales Order
             </a>
 
-            <button class="toolbar-link"
-                    @onclick="ViewSelectedOrder"
+            <button class="btn btn-primary" type="button"
+                    @onclick="EditSelectedOrder"
                     disabled="@(selectedOrder is null)">
-                <span class="icon">✎</span> View
+                <i class="fas fa-pen" aria-hidden="true"></i> Edit
             </button>
 
-            <button class="toolbar-link"
+            <button class="btn btn-primary"
                     type="button"
+                    @onclick="CreateInvoice"
                     disabled="@(selectedOrder is null)">
-                <span>+</span> Create Invoice
+                <i class="fas fa-plus" aria-hidden="true"></i> Create Invoice
             </button>
 
         </div>
@@ -49,7 +50,6 @@
                         <th @onclick='() => SortBy(nameof(SalesOrderDto.Id))'>No @GetSortIndicator(nameof(SalesOrderDto.Id))</th>
                         <th @onclick='() => SortBy(nameof(SalesOrderDto.CustomerName))'>Customer Name @GetSortIndicator(nameof(SalesOrderDto.CustomerName))</th>
                         <th @onclick='() => SortBy(nameof(SalesOrderDto.OrderDate))'>Order Date @GetSortIndicator(nameof(SalesOrderDto.OrderDate))</th>
-                        <th @onclick='() => SortBy(nameof(SalesOrderDto.ReferenceNo))'>Ref no @GetSortIndicator(nameof(SalesOrderDto.ReferenceNo))</th>
                         <th class="text-end">Amount</th>
                         <th @onclick='() => SortBy(nameof(SalesOrderDto.StatusId))'>Status @GetSortIndicator(nameof(SalesOrderDto.StatusId))</th>
                     </tr>
@@ -65,7 +65,6 @@
                             <td>@order.Id</td>
                             <td>@order.CustomerName</td>
                             <td>@order.OrderDate.ToString("yyyy-MM-dd")</td>
-                            <td>@order.ReferenceNo</td>
                             <td class="text-end">@((order.Amount ?? 0m).ToString("0.00"))</td>
                             <td>@GetStatusLabel(order.StatusId)</td>
                         </tr>
@@ -81,7 +80,7 @@
     private List<SalesOrderDto> salesOrders = new();
 
     // Tracks the currently selected row.
-    // The View action reads from this value.
+    // The Edit action reads from this value.
     private SalesOrderDto? selectedOrder;
 
     // Holds a message when loading fails.
@@ -147,7 +146,6 @@
     {
         nameof(SalesOrderDto.CustomerName) => sortAscending ? salesOrders.OrderBy(x => x.CustomerName) : salesOrders.OrderByDescending(x => x.CustomerName),
         nameof(SalesOrderDto.OrderDate) => sortAscending ? salesOrders.OrderBy(x => x.OrderDate) : salesOrders.OrderByDescending(x => x.OrderDate),
-        nameof(SalesOrderDto.ReferenceNo) => sortAscending ? salesOrders.OrderBy(x => x.ReferenceNo) : salesOrders.OrderByDescending(x => x.ReferenceNo),
         nameof(SalesOrderDto.StatusId) => sortAscending ? salesOrders.OrderBy(x => x.StatusId) : salesOrders.OrderByDescending(x => x.StatusId),
         _ => sortAscending ? salesOrders.OrderBy(x => x.Id) : salesOrders.OrderByDescending(x => x.Id)
     };
@@ -183,7 +181,7 @@
     /// <summary>
     /// Marks a row as selected.
     /// If the same row is clicked again, it clears the selection.
-    /// The selected row is used to enable the View action.
+    /// The selected row is used to enable the Edit action.
     /// </summary>
     private void SelectOrder(SalesOrderDto order)
     {
@@ -197,15 +195,21 @@
     }
 
     /// <summary>
-    /// Navigates to the read-only sales order detail page for the selected row.
+    /// Navigates to the sales order editor for the selected row.
     /// If nothing is selected, the method exits without doing anything.
     /// </summary>
-    private void ViewSelectedOrder()
+    private void EditSelectedOrder()
     {
         if (selectedOrder is null)
             return;
 
         Navigation.NavigateTo($"/Sales/SalesOrder?id={selectedOrder.Id}", forceLoad: true);
+    }
+
+    private void CreateInvoice()
+    {
+        if (selectedOrder is null) return;
+        Navigation.NavigateTo($"/Sales/AddSalesInvoice?orderId={selectedOrder.Id}", forceLoad: true);
     }
 
     /// <summary>
@@ -232,4 +236,3 @@
         _ => "N/A"
     };
 }
-

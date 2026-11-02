@@ -102,49 +102,9 @@ namespace AccountGoWeb.Controllers
         public IActionResult SalesOrder(int id)
         {
             ViewBag.PageContentHeader = string.Empty;
-            SalesOrder? salesOrderModel = null;
             if (id == -1)
-            {
-                ViewBag.PageContentHeader = string.Empty;
                 return View("AddSalesOrder");
-
-            }
-            else
-            {
-                try
-                {
-                    salesOrderModel = GetAsync<SalesOrder>("Sales/SalesOrder?id=" + id).Result;
-                    if (salesOrderModel == null)
-                    {
-                        ViewBag.ErrorMessage = "Sales order not found. Please check the order ID and try again.";
-                        _logger.LogWarning("Sales order with id {Id} returned null from API", id);
-                        return View(salesOrderModel);
-                    }
-                    ViewBag.CustomerName = salesOrderModel.CustomerName ?? "Unknown";
-                    ViewBag.OrderDate = salesOrderModel.OrderDate;
-                    ViewBag.SalesOrderLines = salesOrderModel.SalesOrderLines ?? new List<SalesOrderLine>();
-                    ViewBag.TotalAmount = salesOrderModel.Amount;
-                }
-                catch (HttpRequestException hre)
-                {
-                    _logger.LogError(hre, "HTTP error loading sales order with id {Id}", id);
-                    ViewBag.ErrorMessage = $"Failed to load sales order. Status: {hre.Message}";
-                    return View(salesOrderModel);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Unexpected error loading sales order with id {Id}", id);
-                    ViewBag.ErrorMessage = "An unexpected error occurred while loading the sales order. Please try again later.";
-                    return View(salesOrderModel);
-                }
-            }
-
-            @ViewBag.Customers = Models.SelectListItemHelper.Customers();
-            @ViewBag.PaymentTerms = Models.SelectListItemHelper.PaymentTerms();
-            @ViewBag.Items = Models.SelectListItemHelper.Items();
-            @ViewBag.Measurements = Models.SelectListItemHelper.Measurements();
-
-            return View(salesOrderModel);
+            return View();
         }
 
         public IActionResult SalesInvoice(int id)

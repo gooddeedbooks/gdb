@@ -862,7 +862,8 @@ namespace Services.Sales
 
                 if (salesInvoice.Id == 0)
                 {
-                    salesInvoice.No = GetNextNumber(SequenceNumberTypes.SalesInvoice).ToString();
+                    if (string.IsNullOrWhiteSpace(salesInvoice.No))
+                        salesInvoice.No = GetNextNumber(SequenceNumberTypes.SalesInvoice).ToString();
                     _salesInvoiceRepo.Insert(salesInvoice);
                 }
                 else

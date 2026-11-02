@@ -18,6 +18,11 @@ namespace Dto.Sales
         public string? CustomerName { get; set; }
         public string? CustomerEmail { get; set; }
         public decimal Amount { get { return GetTotalAmount(); } }
+        /// <summary>Gets or sets the shipping and handling charge.</summary>
+        [Range(0, 1000000, ErrorMessage = "Shipping must be between 0 and 1000000")]
+        public decimal Shipping { get; set; }
+        /// <summary>Gets the line total plus shipping.</summary>
+        public decimal TotalInvoice => Amount + Shipping;
         public decimal TotalAllocatedAmount { get; set; }
         public string? ReferenceNo { get; set; }
         public bool Posted { get; set; }

@@ -1,2 +1,5 @@
 ﻿@using AccountGoWeb.Components.Pages.Sales
-<component type="typeof(SalesInvoice)" render-mode="ServerPrerendered" />
+@{
+    int.TryParse(Context.Request.Query["orderId"].ToString(), out var orderId);
+}
+<component type="typeof(SalesInvoice)" render-mode="ServerPrerendered" param-OrderId="@(orderId > 0 ? (int?)orderId : null)" />

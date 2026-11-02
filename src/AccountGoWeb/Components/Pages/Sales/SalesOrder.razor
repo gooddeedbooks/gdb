@@ -8,7 +8,7 @@
 @using MeasurementDto = Dto.Inventory.Measurement
 @inject HttpClient Http
 @inject NavigationManager Navigation
-<PageTitle>@(IsNewOrder ? "Add Sales Order" : "Sales Order")</PageTitle>
+<PageTitle>@(IsNewOrder ? "Add Sales Order" : "Edit Sales Order")</PageTitle>
 
 <div class="sales-order-page">
     @if (isLoading)
@@ -22,7 +22,7 @@
     else
     {
         <div class="page-title-row">
-            <h1>@(IsNewOrder ? "Add Sales Order" : "Sales Order")</h1>
+            <h1>@(IsNewOrder ? "Add Sales Order" : "Edit Sales Order")</h1>
             @if (!IsNewOrder)
             {
                 <span class="status-pill @GetStatusClass(salesOrder.StatusId)">@GetStatusLabel(salesOrder.StatusId)</span>
@@ -47,7 +47,7 @@
                     <div class="header-grid">
                         <div class="field">
                             <label>Customer</label>
-                            <select class="form-select" @bind="salesOrder.CustomerId" disabled="@(!isEditMode)">
+                            <select class="form-select" @bind="salesOrder.CustomerId" disabled="@isSaving">
                                 <option value="0">-- Select Customer --</option>
                                 @foreach (var customer in customers)
                                 {
@@ -58,7 +58,7 @@
 
                         <div class="field">
                             <label>Payment Term</label>
-                            <select class="form-select" @bind="salesOrder.PaymentTermId" disabled="@(!isEditMode)">
+                            <select class="form-select" @bind="salesOrder.PaymentTermId" disabled="@isSaving">
                                 <option value="0">-- Select Payment Term --</option>
                                 @foreach (var term in paymentTerms.Where(x => x.IsActive))
                                 {
@@ -68,7 +68,7 @@
                         </div>
 
                         <div class="field amount-field">
-                            <label>Amount</label>
+                            <label>Net Amount</label>
                             <input type="text" class="form-control" value="@CalculateTotal().ToString("0.##")" readonly />
                         </div>
                     </div>
@@ -82,7 +82,7 @@
                                     <tr>
                                         <th>Item</th>
                                         <th>Quantity</th>
-                                        <th>Amount</th>
+                                        <th>Price per Unit</th>
                                         <th>Discount (%)</th>
                                         <th>Unit</th>
                                         <th>Action</th>
@@ -105,7 +105,7 @@
                                             <tr @key="row.RowKey">
                                                 <td>
                                                     <select class="form-select" @bind="line.ItemId"
-                                                            @bind:after="() => OnItemChanged(line)" disabled="@(!isEditMode)">
+                                                            @bind:after="() => OnItemChanged(line)" disabled="@isSaving">
                                                         <option value="0">-- Select Item --</option>
                                                         @foreach (var item in items)
                                                         {
@@ -115,19 +115,19 @@
                                                 </td>
                                                 <td>
                                                     <input type="number" step="0.01" min="0" class="form-control"
-                                                           @bind="line.Quantity" disabled="@(!isEditMode)" />
+                                                           @bind="line.Quantity" disabled="@isSaving" />
                                                 </td>
                                                 <td>
                                                     <input type="number" step="0.01" min="0" class="form-control"
-                                                           @bind="line.Amount" placeholder="0.00" disabled="@(!isEditMode)" />
+                                                           @bind="line.Amount" placeholder="0.00" disabled="@isSaving" />
                                                 </td>
                                                 <td>
                                                     <input type="number" step="0.01" min="0" class="form-control"
-                                                           @bind="line.Discount" placeholder="0.00" disabled="@(!isEditMode)" />
+                                                           @bind="line.Discount" placeholder="0.00" disabled="@isSaving" />
                                                 </td>
                                                 <td>
                                                     <select class="form-select" @bind="line.MeasurementId"
-                                                            disabled="@(!isEditMode)">
+                                                            disabled="@isSaving">
                                                         <option value="0">-- Unit --</option>
                                                         @foreach (var measurement in measurements)
                                                         {
@@ -136,13 +136,10 @@
                                                     </select>
                                                 </td>
                                                 <td>
-                                                    @if (isEditMode)
-                                                    {
-                                                        <button type="button" class="btn btn-danger btn-sm remove-btn"
-                                                                @onclick="() => RemoveLineItem(row.RowKey)">
-                                                            Remove
-                                                        </button>
-                                                    }
+                                                    <button type="button" class="btn btn-danger btn-sm remove-btn" disabled="@isSaving"
+                                                            @onclick="() => RemoveLineItem(row.RowKey)">
+                                                        Remove
+                                                    </button>
                                                 </td>
                                             </tr>
                                         }
@@ -151,24 +148,18 @@
                             </table>
                         </div>
 
-                        @if (isEditMode)
-                        {
-                            <button type="button" class="btn btn-info add-line-btn btn-sm" @onclick="AddLineItem">
-                                Add Line Item
-                            </button>
-                        }
+                        <button type="button" class="btn btn-info add-line-btn btn-sm" @onclick="AddLineItem" disabled="@isSaving">
+                            Add Line Item
+                        </button>
                     </div>
                 </div>
             </section>
         </div>
 
         <div class="action-row">
-            @if (isEditMode)
-            {
-                <button class="btn btn-success btn-sm" @onclick="SaveSalesOrder" disabled="@isSaving">
-                    Save Order
-                </button>
-            }
+            <button class="btn btn-success btn-sm" @onclick="SaveSalesOrder" disabled="@isSaving">
+                Save Order
+            </button>
             <button class="btn btn-secondary btn-sm" @onclick="NavigateBack">Cancel</button>
         </div>
     }
@@ -207,7 +198,6 @@
     // Loading and saving flags used to control UI state.
     private bool isLoading = true;
     private bool isSaving;
-    private bool isEditMode;
 
     // Bound to the date input so the user can edit the order date.
     private DateTime orderDateValue = DateTime.Today;
@@ -215,7 +205,7 @@
     // Base URL for backend API calls.
     private string baseApiUrl = string.Empty;
 
-    // True when the page is creating a new order rather than viewing an existing one.
+    // True when the page is creating a new order rather than editing an existing one.
     private bool IsNewOrder => OrderId == 0;
 
     /// <summary>
@@ -258,17 +248,14 @@
             if (OrderId > 0)
             {
                 await LoadSalesOrder(OrderId);
-                isEditMode = false;
             }
             else if (QuotationId > 0)
             {
                 await LoadQuotation(QuotationId);
-                isEditMode = true;
             }
             else
             {
                 InitializeNewSalesOrder();
-                isEditMode = true;
             }
         }
         catch (Exception ex)
@@ -481,6 +468,7 @@
     /// </summary>
     private async Task SaveSalesOrder()
     {
+        if (isSaving) return;
         validationErrors.Clear();
         SyncDtoFromRows();
 
@@ -516,7 +504,8 @@
         {
             salesOrder.OrderDate = orderDateValue;
 
-            var response = await Http.PostAsJsonAsync($"{baseApiUrl}sales/addsalesorder", salesOrder);
+            using var response = await Http.PostAsJsonAsync(
+                $"{baseApiUrl}sales/{(IsNewOrder ? "addsalesorder" : "savesalesorder")}", salesOrder);
             if (response.IsSuccessStatusCode)
             {
                 Navigation.NavigateTo("/Sales/SalesOrders", forceLoad: true);
@@ -524,12 +513,16 @@
             else
             {
                 var error = await response.Content.ReadAsStringAsync();
-                errorMessage = $"Error saving sales order: {error}";
+                validationErrors.Add($"Error saving sales order: {error}");
             }
         }
-        catch (Exception ex)
+        catch (HttpRequestException)
         {
-            errorMessage = $"Error saving sales order: {ex.Message}";
+            validationErrors.Add("The connection to the API failed while saving. Your changes have been kept. Check the orders list before retrying.");
+        }
+        catch (TaskCanceledException)
+        {
+            validationErrors.Add("Saving the sales order timed out. Your changes have been kept. Check the orders list before retrying.");
         }
         finally
         {

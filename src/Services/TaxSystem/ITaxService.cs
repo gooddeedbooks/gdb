@@ -8,6 +8,10 @@ namespace Services.TaxSystem
     {
         Core.Domain.TaxSystem.Tax GetTaxById(int taxId);
         IEnumerable<Core.Domain.TaxSystem.Tax> GetTaxes(bool includeInActive = false);
+        /// <summary>Gets active taxes from the customer's assigned active tax group.</summary>
+        /// <param name="customerId">The customer identifier.</param>
+        /// <returns>The taxes applicable to the customer.</returns>
+        IEnumerable<Core.Domain.TaxSystem.Tax> GetCustomerTaxes(int customerId);
         IEnumerable<Core.Domain.TaxSystem.TaxGroup> GetTaxGroups();
         IEnumerable<Core.Domain.TaxSystem.ItemTaxGroup> GetItemTaxGroups();
         IEnumerable<Core.Domain.TaxSystem.Tax> GetIntersectionTaxes(int itemId, int partyId, Core.Domain.PartyTypes partyType);

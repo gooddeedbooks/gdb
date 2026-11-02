@@ -26,6 +26,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Api\Api.csproj" />
     <ProjectReference Include="..\..\src\Services\Services.csproj" />
     <ProjectReference Include="..\..\src\Dto\Dto.csproj" />
     <ProjectReference Include="..\..\src\Core\Core.csproj" />
