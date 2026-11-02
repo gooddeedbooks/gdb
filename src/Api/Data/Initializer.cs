@@ -1,6 +1,4 @@
-using Core.Domain;
 using Core.Domain.Financials;
-using Core.Domain.Sales;
 using Services.Administration;
 using Services.Financial;
 using Services.Inventory;
@@ -101,10 +99,6 @@ namespace Api.Data
                 //12.Dashboard demo data
                 SetupDashboardDemoData();
                 Console.WriteLine("SetupDashboardDemoData() - Completed!");
-
-                //13.Sales order sample data
-                SetupSalesOrderDemoData();
-                Console.WriteLine("SetupSalesOrderDemoData() - Completed!");
 
                 return true;
             }
@@ -993,66 +987,6 @@ namespace Api.Data
                 bank.AccountId.Value,
                 currentYearStart.AddMonths(3).AddDays(15),
                 150m);
-        }
-
-        private void SetupSalesOrderDemoData()
-        {
-            var customers = _salesService.GetCustomers().ToList();
-            var item = _inventoryService.GetAllItems()
-                .FirstOrDefault(candidate => candidate.Price.HasValue
-                    && (candidate.SellMeasurementId.HasValue || candidate.SmallestMeasurementId.HasValue));
-
-            if (customers.Count == 0 || item == null)
-            {
-                Console.WriteLine("Skipped sales order samples: a customer or sellable item is missing.");
-                return;
-            }
-
-            var measurementId = item.SellMeasurementId ?? item.SmallestMeasurementId;
-            if (!measurementId.HasValue)
-            {
-                Console.WriteLine("Skipped sales order samples: the sample item has no measurement.");
-                return;
-            }
-
-            var paymentTermId = _adminService.GetPaymentTerms().FirstOrDefault()?.Id;
-            var itemPrice = item.Price.GetValueOrDefault();
-            var today = DateTime.Today;
-            var samples = new[]
-            {
-                new { ReferenceNo = "SAMPLE-SO-001", Customer = customers[0], Date = today.AddDays(-2), Status = SalesOrderStatus.Open, Quantity = 2m, Discount = 0m },
-                new { ReferenceNo = "SAMPLE-SO-002", Customer = customers[customers.Count > 1 ? 1 : 0], Date = today.AddDays(-7), Status = SalesOrderStatus.Draft, Quantity = 5m, Discount = 5m },
-                new { ReferenceNo = "SAMPLE-SO-003", Customer = customers[customers.Count > 2 ? 2 : 0], Date = today.AddDays(-30), Status = SalesOrderStatus.Overdue, Quantity = 1m, Discount = 0m },
-                new { ReferenceNo = "SAMPLE-SO-004", Customer = customers[customers.Count > 3 ? 3 : 0], Date = today.AddDays(-14), Status = SalesOrderStatus.Closed, Quantity = 3m, Discount = 10m }
-            };
-
-            foreach (var sample in samples)
-            {
-                if (_salesService.GetSalesOrders().Any(order => order.ReferenceNo == sample.ReferenceNo))
-                    continue;
-
-                var salesOrder = new SalesOrderHeader
-                {
-                    CustomerId = sample.Customer.Id,
-                    PaymentTermId = sample.Customer.PaymentTermId ?? paymentTermId,
-                    ReferenceNo = sample.ReferenceNo,
-                    Status = sample.Status,
-                    Date = sample.Date,
-                    SalesOrderLines = new List<SalesOrderLine>
-                    {
-                        new SalesOrderLine
-                        {
-                            ItemId = item.Id,
-                            MeasurementId = measurementId.Value,
-                            Quantity = sample.Quantity,
-                            Discount = sample.Discount,
-                            Amount = itemPrice
-                        }
-                    }
-                };
-
-                _salesService.AddSalesOrder(salesOrder, true);
-            }
         }
 
         private Core.Domain.Sales.Customer CreateDemoCustomer(string name)
