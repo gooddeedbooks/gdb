@@ -27,7 +27,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Module.Tests", "test\Module
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "GoodBooks.BackendTests", "test\GoodBooks.BackendTests\GoodBooks.BackendTests.csproj", "{C59F300E-4BAC-4329-9A41-8F1D75A7E197}"
 EndProject
-EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{EF0BD6F1-00D6-41E5-91AB-8B606D35D448}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "BlazorGDB", "src\BlazorGDB\BlazorGDB\BlazorGDB.csproj", "{AB5F238F-AB78-4A85-8D8D-17E211015FD3}"
