@@ -53,6 +53,66 @@ namespace Api.Data.Seed
             var apiContext = scope.ServiceProvider.GetRequiredService<ApiDbContext>();
             SeedDonations(apiContext);
             SeedDonationTypes(apiContext);
+            SeedSalesOrders(apiContext);
+        }
+
+        private static void SeedSalesOrders(ApiDbContext context)
+        {
+            var customers = context.Customers
+                .Where(customer => customer.Party.IsActive)
+                .OrderBy(customer => customer.Id)
+                .ToList();
+            var items = context.Items
+                .Where(item => item.Price.HasValue && item.Price.Value > 0)
+                .OrderBy(item => item.Id)
+                .ToList();
+            var paymentTermId = context.PaymentTerms
+                .Where(term => term.IsActive)
+                .OrderBy(term => term.Id)
+                .Select(term => (int?)term.Id)
+                .FirstOrDefault();
+            var defaultMeasurementId = context.Measurements
+                .OrderBy(measurement => measurement.Id)
+                .Select(measurement => (int?)measurement.Id)
+                .FirstOrDefault();
+
+            if (customers.Count == 0 || items.Count == 0 || !defaultMeasurementId.HasValue)
+            {
+                Console.WriteLine("Skipped sample sales orders: an active customer, priced item, or unit of measure is missing.");
+                return;
+            }
+
+            for (var index = 0; index < 5; index++)
+            {
+                var orderNumber = $"SO-SEED-{index + 1:D3}";
+                if (context.SalesOrderHeaders.Any(order => order.No == orderNumber))
+                    continue;
+
+                var item = items[index % items.Count];
+                var measurementId = item.SellMeasurementId ?? item.SmallestMeasurementId ?? defaultMeasurementId.Value;
+                context.SalesOrderHeaders.Add(new Core.Domain.Sales.SalesOrderHeader
+                {
+                    No = orderNumber,
+                    ReferenceNo = $"SAMPLE-{index + 1:D3}",
+                    CustomerId = customers[index % customers.Count].Id,
+                    PaymentTermId = paymentTermId,
+                    Date = DateTime.Today.AddDays(-index * 3),
+                    Status = Core.Domain.SalesOrderStatus.Open,
+                    SalesOrderLines =
+                    {
+                        new Core.Domain.Sales.SalesOrderLine
+                        {
+                            ItemId = item.Id,
+                            MeasurementId = measurementId,
+                            Quantity = index + 1,
+                            Amount = item.Price.GetValueOrDefault(),
+                            Discount = index % 2 == 0 ? 0 : 5
+                        }
+                    }
+                });
+            }
+
+            context.SaveChanges();
         }
 
         private static void SeedDonationTypes(ApiDbContext context)
