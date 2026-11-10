@@ -31,8 +31,8 @@ namespace AccountGoWeb.Controllers
         {
             ViewBag.PageContentHeader = "Add New Tax";
 
-            @ViewBag.DebitAccounts = Models.SelectListItemHelper.AccountsByCodeRange(10000, 10999);
-            @ViewBag.CreditAccounts = Models.SelectListItemHelper.AccountsByCodeRange(20000, 20999);
+            @ViewBag.DebitAccounts = Models.SelectListItemHelper.AccountsByCodeRange(20000, 29999);
+            @ViewBag.CreditAccounts = Models.SelectListItemHelper.AccountsByCodeRange(10000, 59999);
 
             return View();
         }
@@ -61,8 +61,8 @@ namespace AccountGoWeb.Controllers
                 ModelState.AddModelError(string.Empty, $"Error saving tax: {errorContent}");
             }
 
-            @ViewBag.DebitAccounts = Models.SelectListItemHelper.AccountsByCodeRange(10000, 10999);
-            @ViewBag.CreditAccounts = Models.SelectListItemHelper.AccountsByCodeRange(20000, 20999);
+            @ViewBag.DebitAccounts = Models.SelectListItemHelper.AccountsByCodeRange(20000, 29999);
+            @ViewBag.CreditAccounts = Models.SelectListItemHelper.AccountsByCodeRange(10000, 59999);
 
             return View();
         }
@@ -73,6 +73,8 @@ namespace AccountGoWeb.Controllers
             "GST" => "Goods and Services Tax",
             "HST" => "Harmonized Sales Tax",
             "PST" => "Provincial Sales Tax",
+            "QST" => "Quebec Sales Tax",
+            "RST" => "Retail Sales Tax",
             "EXEMPT" => "Tax Exempt",
             _ => taxCode ?? string.Empty
         };
@@ -152,8 +154,8 @@ namespace AccountGoWeb.Controllers
                             editTaxViewModel.SalesAccountId = salesAccountCode;
                             editTaxViewModel.PurchaseAccountId = purchaseAccountCode;
 
-                            @ViewBag.DebitAccounts = Models.SelectListItemHelper.AccountsByCodeRange(10000, 10999);
-                            @ViewBag.CreditAccounts = Models.SelectListItemHelper.AccountsByCodeRange(20000, 20999);
+                            @ViewBag.DebitAccounts = Models.SelectListItemHelper.AccountsByCodeRange(20000, 29999);
+                            @ViewBag.CreditAccounts = Models.SelectListItemHelper.AccountsByCodeRange(10000, 59999);
 
                             Console.WriteLine("Returning EditTax view");
                             return View("EditTax", editTaxViewModel);
@@ -224,8 +226,8 @@ namespace AccountGoWeb.Controllers
                 }
             }
 
-            @ViewBag.DebitAccounts = Models.SelectListItemHelper.AccountsByCodeRange(10000, 10999);
-            @ViewBag.CreditAccounts = Models.SelectListItemHelper.AccountsByCodeRange(20000, 20999);
+            @ViewBag.DebitAccounts = Models.SelectListItemHelper.AccountsByCodeRange(20000, 29999);
+            @ViewBag.CreditAccounts = Models.SelectListItemHelper.AccountsByCodeRange(10000, 59999);
 
             return View(editTaxViewModel);
         }

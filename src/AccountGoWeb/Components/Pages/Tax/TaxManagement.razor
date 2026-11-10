@@ -6,6 +6,26 @@
 
 <PageTitle>Tax Management</PageTitle>
 
+<div class="alert alert-info">
+    Canadian defaults cover standard taxable sales in all 13 provinces and territories.
+    Assign a province-specific tax group to the customer for the place of supply.
+    HST replaces GST/PST; GST and PST/RST/QST use the same pre-tax base.
+    Nova Scotia HST is 14% from April 1, 2025; Quebec QST is 9.975%.
+    <a href="https://www.canada.ca/en/revenue-agency/services/tax/businesses/topics/gst-hst-businesses/charge-collect-which-rate/calculator.html"
+       target="_blank" rel="noopener noreferrer">CRA rate reference</a>.
+</div>
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger" role="alert">@errorMessage</div>
+}
+@if (taxGroups?.Any(g => g.Description == "GST/HST") == true)
+{
+    <div class="alert alert-warning">
+        The legacy GST/HST group has been retained. Review customers using legacy groups and assign
+        the appropriate CA-province group; Canadian HST must not be added to GST.
+    </div>
+}
+
 <div class="nav-tabs-custom">
     <ul class="nav nav-tabs" role="tablist">
         <li class="nav-item">
@@ -55,7 +75,7 @@
                                     <tr @ondblclick="() => EditTax(tax)" class="cursor-pointer">
                                         <td>@tax.TaxCode</td>
                                         <td>@tax.TaxName</td>
-                                        <td>@tax.Rate</td>
+                                        <td>@FormatRate(tax.Rate)%</td>
                                         <td>
                                             <button class="btn btn-primary btn-sm" @onclick:stopPropagation="true"
                                                     @onclick="() => EditTax(tax)">Edit</button>
@@ -90,6 +110,8 @@
                         <thead>
                             <tr>
                                 <th>Description</th>
+                                <th>Tax Components</th>
+                                <th>Total Rate (%)</th>
                                 <th>Tax Applied To Shipping</th>
                                 <th>Active</th>
                                 <th>Action</th>
@@ -102,6 +124,8 @@
                                 {
                                     <tr @onclick="() => SelectTaxGroup(group)" class="cursor-pointer">
                                         <td>@group.Description</td>
+                                        <td>@string.Join(" + ", GetTaxGroupTaxes(group).Where(t => t.IsActive).Select(t => $"{t.TaxCode} {FormatRate(t.Rate)}%"))</td>
+                                        <td>@FormatRate(GetTaxGroupTaxes(group).Where(t => t.IsActive).Sum(t => t.Rate))%</td>
                                         <td><input type="checkbox" checked="@group.TaxAppliedToShipping" disabled /></td>
                                         <td><input type="checkbox" checked="@group.IsActive" disabled /></td>
                                         <td>
@@ -114,13 +138,13 @@
                             else if (isLoading)
                             {
                                 <tr>
-                                    <td colspan="4" class="text-center">Loading...</td>
+                                    <td colspan="6" class="text-center">Loading...</td>
                                 </tr>
                             }
                             else
                             {
                                 <tr>
-                                    <td colspan="4" class="text-center">No tax groups found.</td>
+                                    <td colspan="6" class="text-center">No tax groups found.</td>
                                 </tr>
                             }
                         </tbody>
@@ -146,7 +170,7 @@
                                         <tr>
                                             <td>@groupTax.TaxCode</td>
                                             <td>@groupTax.TaxName</td>
-                                            <td>@groupTax.Rate</td>
+                                            <td>@FormatRate(groupTax.Rate)%</td>
                                         </tr>
                                     }
                                 </tbody>
@@ -218,7 +242,7 @@
                                         <tr>
                                             <td>@groupTax.TaxCode</td>
                                             <td>@groupTax.TaxName</td>
-                                            <td>@groupTax.Rate</td>
+                                            <td>@FormatRate(groupTax.Rate)%</td>
                                         </tr>
                                     }
                                 </tbody>
@@ -236,6 +260,8 @@
 @code {
     private string activeTab = "taxes";
     private bool isLoading = true;
+    private string? errorMessage;
+    private static string FormatRate(decimal rate) => rate.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
 
     private List<Dto.TaxSystem.Tax>? taxes;
     private List<Dto.TaxSystem.TaxGroup>? taxGroups;
@@ -252,10 +278,12 @@
     private async Task LoadTaxData()
     {
         isLoading = true;
+        errorMessage = null;
         try
         {
             var baseUri = Configuration["ApiUrl"];
             var response = await Http.GetAsync($"{baseUri}tax/taxes");
+            response.EnsureSuccessStatusCode();
 
             if (response.IsSuccessStatusCode)
             {
@@ -273,6 +301,7 @@
         catch (Exception ex)
         {
             Console.WriteLine($"Error loading tax data: {ex.Message}");
+            errorMessage = "Unable to load tax configuration. Please reload the page.";
         }
         finally
         {

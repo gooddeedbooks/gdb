@@ -9,6 +9,8 @@ namespace Dto.Sales
         public string? CustomerName { get; set; }
         public decimal Amount { get; set; }
         public decimal RemainingAmountToAllocate { get; set; }
+        /// <summary>Comma-separated invoice numbers this receipt has been allocated to.</summary>
+        public string? AppliedToInvoices { get; set; }
         public int AccountToDebitId { get; set; }
         public string? AccountToDebit { get; set; }
         public int AccountToCreditId { get; set; }

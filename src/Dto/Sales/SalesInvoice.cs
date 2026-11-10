@@ -21,8 +21,8 @@ namespace Dto.Sales
         /// <summary>Gets or sets the shipping and handling charge.</summary>
         [Range(0, 1000000, ErrorMessage = "Shipping must be between 0 and 1000000")]
         public decimal Shipping { get; set; }
-        /// <summary>Gets the line total plus shipping.</summary>
-        public decimal TotalInvoice => Amount + Shipping;
+        /// <summary>Gets the discounted line total plus shipping and tax.</summary>
+        public decimal TotalInvoice => Amount + Shipping + TotalTax.GetValueOrDefault();
         public decimal TotalAllocatedAmount { get; set; }
         public string? ReferenceNo { get; set; }
         public bool Posted { get; set; }

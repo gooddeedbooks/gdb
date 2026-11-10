@@ -34,7 +34,8 @@
                 <div class="row mt-3">
                     <div class="col-sm-3">Rate</div>
                     <div class="col-sm-8">
-                        <input asp-for="Tax.Rate" class="form-control" type="number" step="any" placeholder="Rate" />
+                        <input asp-for="Tax.Rate" class="form-control" type="number" min="0" max="100" step="0.001" placeholder="Rate (%)" />
+                        <small class="d-block">Percentage, up to three decimal places (QST: 9.975%).</small>
                         <span asp-validation-for="Tax.Rate" class="text-danger"></span>
                     </div>
                 </div>
@@ -43,12 +44,12 @@
                     <div class="col-sm-8">
                         <select class="form-control mb-1" asp-for="SalesAccountId"
                                 asp-items="@ViewBag.DebitAccounts"></select>
-                        <small class="d-block mb-2">Debit account</small>
+                        <small class="d-block mb-2">Sales tax account (liability / credit)</small>
                         <span asp-validation-for="SalesAccountId" class="text-danger"></span>
 
                         <select class="form-control mb-1" asp-for="PurchaseAccountId"
                                 asp-items="@ViewBag.CreditAccounts"></select>
-                        <small class="d-block">Credit account</small>
+                        <small class="d-block">Purchase tax account (debit)</small>
                         <span asp-validation-for="PurchaseAccountId" class="text-danger"></span>
                     </div>
                 </div>

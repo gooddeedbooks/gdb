@@ -255,7 +255,7 @@ namespace Api.Data
 
             builder.Entity<Tax>()
                 .Property(p => p.Rate)
-                .HasColumnType("decimal(18, 2)");
+                .HasColumnType("decimal(18, 3)");
 
             builder.Seed();
             /* Medhat END */

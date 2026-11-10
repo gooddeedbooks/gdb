@@ -137,9 +137,9 @@ namespace Services.Sales
 
         public void AddSalesInvoice(SalesInvoiceHeader salesInvoice, int? salesDeliveryId, int? salesOrderId)
         {
-            decimal totalAmount = 0, totalDiscount = 0;
+            decimal totalAmount = 0;
 
-            var taxes = new List<KeyValuePair<int, decimal>>();
+            var taxes = _financialService.ComputeSalesInvoiceTaxes(salesInvoice);
             var sales = new List<KeyValuePair<int, decimal>>();
 
             var glHeader = _financialService.CreateGeneralLedgerHeader(DocumentTypes.SalesInvoice, salesInvoice.Date, string.Empty);
@@ -155,19 +155,10 @@ namespace Services.Sales
                     throw new Exception("Item is not correctly setup for financial transaction. Please check if GL accounts are all set.");
 
                 var lineDiscountAmount = (lineItem.Discount / 100) * lineAmount;
-                totalDiscount += lineDiscountAmount;
 
                 var totalLineAmount = lineAmount - lineDiscountAmount;
 
                 totalAmount += totalLineAmount;
-
-                var lineTaxes = _financialService.ComputeOutputTax(salesInvoice.CustomerId, item.Id, lineItem.Quantity, lineItem.Amount, lineItem.Discount);
-
-                foreach (var t in lineTaxes)
-                    taxes.Add(t);
-
-                var lineTaxAmount = lineTaxes != null && lineTaxes.Count > 0 ? lineTaxes.Sum(t => t.Value) : 0;
-                totalLineAmount = totalLineAmount - lineTaxAmount;
 
                 sales.Add(new KeyValuePair<int, decimal>(item.SalesAccountId.Value, totalLineAmount));
 
@@ -183,7 +174,7 @@ namespace Services.Sales
                 }
             }
 
-            totalAmount += salesInvoice.ShippingHandlingCharge;
+            totalAmount += salesInvoice.ShippingHandlingCharge + taxes.Sum(t => t.Value);
             var debitCustomerAR = _financialService.CreateGeneralLedgerLine(DrOrCrSide.Dr, customer.AccountsReceivableAccount.Id, Math.Round(totalAmount, 2, MidpointRounding.ToEven));
             glHeader.GeneralLedgerLines.Add(debitCustomerAR);
 
@@ -218,13 +209,6 @@ namespace Services.Sales
                     var creditSalesTaxAccount = _financialService.CreateGeneralLedgerLine(DrOrCrSide.Cr, tx.SalesAccountId.Value, Math.Round(tax.Value, 2, MidpointRounding.ToEven));
                     glHeader.GeneralLedgerLines.Add(creditSalesTaxAccount);
                 }
-            }
-
-            if (totalDiscount > 0)
-            {
-                var salesDiscountAccount = base.GetGeneralLedgerSetting().SalesDiscountAccount;
-                var creditSalesDiscountAccount = _financialService.CreateGeneralLedgerLine(DrOrCrSide.Dr, salesDiscountAccount.Id, Math.Round(totalDiscount, 2, MidpointRounding.ToEven));
-                glHeader.GeneralLedgerLines.Add(creditSalesDiscountAccount);
             }
 
             if (salesInvoice.ShippingHandlingCharge > 0)
@@ -915,9 +899,9 @@ namespace Services.Sales
             if (salesInvoice.GeneralLedgerHeaderId.HasValue)
                 throw new Exception("Invoice is already posted. Update is not allowed.");
 
-            decimal totalAmount = 0, totalDiscount = 0;
+            decimal totalAmount = 0;
 
-            var taxes = new List<KeyValuePair<int, decimal>>();
+            var taxes = _financialService.ComputeSalesInvoiceTaxes(salesInvoice);
             var sales = new List<KeyValuePair<int, decimal>>();
 
             var glHeader = _financialService.CreateGeneralLedgerHeader(DocumentTypes.SalesInvoice, salesInvoice.Date, string.Empty);
@@ -933,19 +917,10 @@ namespace Services.Sales
                 var lineAmount = lineItem.Quantity * lineItem.Amount;
 
                 var lineDiscountAmount = (lineItem.Discount / 100) * lineAmount;
-                totalDiscount += lineDiscountAmount;
 
                 var totalLineAmount = lineAmount - lineDiscountAmount;
 
                 totalAmount += totalLineAmount;
-
-                var lineTaxes = _financialService.ComputeOutputTax(salesInvoice.CustomerId, item.Id, lineItem.Quantity, lineItem.Amount, lineItem.Discount);
-
-                foreach (var t in lineTaxes)
-                    taxes.Add(t);
-
-                var lineTaxAmount = lineTaxes != null && lineTaxes.Count > 0 ? lineTaxes.Sum(t => t.Value) : 0;
-                totalLineAmount = totalLineAmount - lineTaxAmount;
 
                 sales.Add(new KeyValuePair<int, decimal>(item.SalesAccountId.Value, totalLineAmount));
 
@@ -961,7 +936,7 @@ namespace Services.Sales
                 }
             }
 
-            totalAmount += salesInvoice.ShippingHandlingCharge;
+            totalAmount += salesInvoice.ShippingHandlingCharge + taxes.Sum(t => t.Value);
             var debitCustomerAR = _financialService.CreateGeneralLedgerLine(DrOrCrSide.Dr, customer.AccountsReceivableAccount.Id, Math.Round(totalAmount, 2, MidpointRounding.ToEven));
             glHeader.GeneralLedgerLines.Add(debitCustomerAR);
 
@@ -996,13 +971,6 @@ namespace Services.Sales
                     var creditSalesTaxAccount = _financialService.CreateGeneralLedgerLine(DrOrCrSide.Cr, tx.SalesAccountId.Value, Math.Round(tax.Value, 2, MidpointRounding.ToEven));
                     glHeader.GeneralLedgerLines.Add(creditSalesTaxAccount);
                 }
-            }
-
-            if (totalDiscount > 0)
-            {
-                var salesDiscountAccount = base.GetGeneralLedgerSetting().SalesDiscountAccount;
-                var creditSalesDiscountAccount = _financialService.CreateGeneralLedgerLine(DrOrCrSide.Dr, salesDiscountAccount.Id, Math.Round(totalDiscount, 2, MidpointRounding.ToEven));
-                glHeader.GeneralLedgerLines.Add(creditSalesDiscountAccount);
             }
 
             if (salesInvoice.ShippingHandlingCharge > 0)

@@ -36,7 +36,8 @@ namespace Api.Data.Seed
                 salesService,
                 purchasingService,
                 inventoryService,
-                securityService
+                securityService,
+                scope.ServiceProvider.GetRequiredService<ApiDbContext>()
             );
 
             var success = initializer.Setup();

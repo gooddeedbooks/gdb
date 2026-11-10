@@ -19,13 +19,15 @@ namespace Api.Data
         private readonly IPurchasingService _purchasingService;
         private readonly IInventoryService _inventoryService;
         private readonly ISecurityService _securityService;
+        private readonly ApiDbContext _context;
 
         public Initializer(IAdministrationService adminService,
             IFinancialService financialService,
             ISalesService salesService,
             IPurchasingService purchasingService,
             IInventoryService inventoryService,
-            ISecurityService securityService)
+            ISecurityService securityService,
+            ApiDbContext context)
         {
             _adminService = adminService;
             _financialService = financialService;
@@ -33,6 +35,7 @@ namespace Api.Data
             _purchasingService = purchasingService;
             _inventoryService = inventoryService;
             _securityService = securityService;
+            _context = context;
         }
         public bool Setup()
         {
@@ -82,6 +85,7 @@ namespace Api.Data
 
                 //8.Customer
                 SetupCustomer();
+                Seed.CustomerSampleSeeder.Seed(_context);
                 Console.WriteLine("SetupCustomer() - Completed!");
 
                 // 9.Items
@@ -98,6 +102,7 @@ namespace Api.Data
 
                 //12.Dashboard demo data
                 SetupDashboardDemoData();
+                Seed.SampleCustomerReceiptRemover.RemoveSampleReceipts(_context);
                 Console.WriteLine("SetupDashboardDemoData() - Completed!");
 
                 return true;
@@ -535,111 +540,7 @@ namespace Api.Data
 
         private void SetupTax()
         {
-            IList<Core.Domain.TaxSystem.Tax> taxes = new List<Core.Domain.TaxSystem.Tax>();
-            if (_financialService.GetTaxes().Any()) return;
-
-            var salesTaxAccount = _financialService.GetAccountByAccountCode("20300");
-            var purchaseTaxAccount = _financialService.GetAccountByAccountCode("50700");
-
-            var gst = new Core.Domain.TaxSystem.Tax()
-            {
-                TaxCode = "GST",
-                TaxName = "Goods and Services Tax",
-                Rate = 5,
-                IsActive = true,
-                SalesAccountId = salesTaxAccount.Id,
-                PurchasingAccountId = purchaseTaxAccount.Id,
-            };
-
-            var hst = new Core.Domain.TaxSystem.Tax()
-            {
-                TaxCode = "HST",
-                TaxName = "Harmonized Sales Tax",
-                Rate = 12,
-                IsActive = true,
-                SalesAccountId = salesTaxAccount.Id,
-                PurchasingAccountId = purchaseTaxAccount.Id,
-            };
-
-            var pst = new Core.Domain.TaxSystem.Tax()
-            {
-                TaxCode = "PST",
-                TaxName = "Provincial Sales Tax",
-                Rate = 7,
-                IsActive = true,
-                SalesAccountId = salesTaxAccount.Id,
-                PurchasingAccountId = purchaseTaxAccount.Id,
-            };
-
-            var taxGroupGstHst = new Core.Domain.TaxSystem.TaxGroup()
-            {
-                Description = "GST/HST",
-                TaxAppliedToShipping = false,
-                IsActive = true,
-            };
-
-            var taxGroupPst = new Core.Domain.TaxSystem.TaxGroup()
-            {
-                Description = "PST",
-                TaxAppliedToShipping = false,
-                IsActive = true,
-            };
-
-            IList<Core.Domain.TaxSystem.TaxGroup> taxGroups = new List<Core.Domain.TaxSystem.TaxGroup>();
-            taxGroups.Add(taxGroupGstHst);
-            taxGroups.Add(taxGroupPst);
-
-            var itemTaxGroupRegular = new Core.Domain.TaxSystem.ItemTaxGroup()
-            {
-                Name = "Regular",
-                IsFullyExempt = false,
-            };
-
-            var itemTaxGroupRegularPreferenced = new Core.Domain.TaxSystem.ItemTaxGroup()
-            {
-                Name = "Preferenced",
-                IsFullyExempt = false,
-            };
-
-            IList<Core.Domain.TaxSystem.ItemTaxGroup> itemtaxGroups = new List<Core.Domain.TaxSystem.ItemTaxGroup>();
-            itemtaxGroups.Add(itemTaxGroupRegular);
-            itemtaxGroups.Add(itemTaxGroupRegularPreferenced);
-
-            gst.TaxGroupTaxes.Add(new Core.Domain.TaxSystem.TaxGroupTax()
-            {
-                TaxGroup = taxGroupGstHst,
-            });
-
-            hst.TaxGroupTaxes.Add(new Core.Domain.TaxSystem.TaxGroupTax()
-            {
-                TaxGroup = taxGroupGstHst,
-            });
-
-            pst.TaxGroupTaxes.Add(new Core.Domain.TaxSystem.TaxGroupTax()
-            {
-                TaxGroup = taxGroupPst,
-            });
-
-            gst.ItemTaxGroupTaxes.Add(new Core.Domain.TaxSystem.ItemTaxGroupTax()
-            {
-                ItemTaxGroup = itemTaxGroupRegularPreferenced,
-                IsExempt = false,
-            });
-
-            hst.ItemTaxGroupTaxes.Add(new Core.Domain.TaxSystem.ItemTaxGroupTax()
-            {
-                ItemTaxGroup = itemTaxGroupRegular,
-                IsExempt = false,
-            });
-
-            taxes.Add(gst);
-            taxes.Add(hst);
-            taxes.Add(pst);
-
-            foreach (var tax in taxes)
-            {
-                _adminService.AddNewTax(tax);
-            }
+            Seed.CanadianTaxSeeder.Seed(_context);
         }
 
         private void SetupVendor()
@@ -691,7 +592,7 @@ namespace Api.Data
             customer.SalesAccountId = accountSales != null ? (int?)accountSales.Id : null;
             customer.CustomerAdvancesAccountId = accountAdvances != null ? (int?)accountAdvances.Id : null;
             customer.SalesDiscountAccountId = accountSalesDiscount != null ? (int?)accountSalesDiscount.Id : null;
-            customer.TaxGroupId = _financialService.GetTaxGroups().FirstOrDefault(tg => tg.Description == "GST/HST" && tg.IsActive)?.Id;
+            customer.TaxGroupId = _financialService.GetTaxGroups().FirstOrDefault(tg => tg.Description == "CA-ON - Ontario" && tg.IsActive)?.Id;
             customer.Party = customerParty;
 
             Core.Domain.Contact primaryContact = new Core.Domain.Contact
@@ -951,19 +852,13 @@ namespace Api.Data
                 6,
                 purchasedItem.Price ?? 95m);
 
-            var unpaidSalesInvoice = SeedSalesInvoice(
+            SeedSalesInvoice(
                 secondaryCustomer,
                 purchasedItem,
                 currentYearStart.AddMonths(2).AddDays(9),
                 paymentTermId,
                 4,
                 (purchasedItem.Price ?? 95m) + 20m);
-
-            SeedCustomerReceipt(
-                primaryCustomer,
-                bank.AccountId.Value,
-                currentYearStart.AddMonths(1).AddDays(18),
-                300m);
 
             SeedPurchaseInvoice(
                 primaryVendor,
@@ -997,7 +892,7 @@ namespace Api.Data
                 SalesAccountId = _financialService.GetAccountByAccountCode("40100").Id,
                 CustomerAdvancesAccountId = _financialService.GetAccountByAccountCode("20120").Id,
                 SalesDiscountAccountId = _financialService.GetAccountByAccountCode("40400").Id,
-                TaxGroupId = _financialService.GetTaxGroups().FirstOrDefault(tg => tg.Description == "GST/HST" && tg.IsActive)?.Id,
+                TaxGroupId = _financialService.GetTaxGroups().FirstOrDefault(tg => tg.Description == "CA-ON - Ontario" && tg.IsActive)?.Id,
                 Party = new Core.Domain.Party
                 {
                     Name = name,
@@ -1080,30 +975,6 @@ namespace Api.Data
 
             _salesService.AddSalesInvoice(invoice, null, null);
             return invoice;
-        }
-
-        private void SeedCustomerReceipt(
-            Core.Domain.Sales.Customer customer,
-            int bankAccountId,
-            DateTime receiptDate,
-            decimal amountPaid)
-        {
-            var receipt = new Core.Domain.Sales.SalesReceiptHeader
-            {
-                CustomerId = customer.Id,
-                Date = receiptDate,
-                AccountToDebitId = bankAccountId,
-                Amount = amountPaid
-            };
-
-            receipt.SalesReceiptLines.Add(new Core.Domain.Sales.SalesReceiptLine
-            {
-                Quantity = 1,
-                Amount = amountPaid,
-                AmountPaid = amountPaid
-            });
-
-            _salesService.AddSalesReceipt(receipt);
         }
 
         private Core.Domain.Purchases.PurchaseInvoiceHeader SeedPurchaseInvoice(

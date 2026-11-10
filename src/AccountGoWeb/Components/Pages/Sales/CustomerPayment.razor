@@ -4,17 +4,6 @@
 @using AccountGoWeb.Models.Sales
 @using Microsoft.AspNetCore.Components
 
-<style>
-    label,
-    h5 {
-        color: var(--bs-white, #fff) !important;
-    }
-
-    div.row {
-        color: var(--bs-white, #fff);
-    }
-</style>
-
 <div class="container-fluid">
     <div class="row mb-3">
         <div class="col">
@@ -35,7 +24,7 @@
                     Cancel
                 </button>
             }
-            <a href="/Sales/CustomerPayments" class="btn btn-outline-secondary btn-sm">
+            <a href="/Sales/CustomerPayments?tab=payments" class="btn btn-outline-secondary btn-sm">
                 <i class="fas fa-arrow-left"></i>
                 Back to Customer Payments
             </a>
@@ -411,8 +400,7 @@
 
             if (response.IsSuccessStatusCode)
             {
-                isEditing = false;
-                await LoadPayment();
+                Navigation.NavigateTo("/Sales/CustomerPayments?tab=payments", forceLoad: true);
             }
             else
             {

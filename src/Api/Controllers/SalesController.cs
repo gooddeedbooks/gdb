@@ -307,6 +307,8 @@ namespace Api.Controllers
             try
             {
                 var salesInvoice = _salesService.GetSalesInvoiceById(id);
+                if (salesInvoice == null)
+                    return NotFound(new { error = "The invoice no longer exists." });
 
                 var salesInvoiceDto = new Dto.Sales.SalesInvoice()
                 {
@@ -336,6 +338,9 @@ namespace Api.Controllers
 
                     salesInvoiceDto.SalesInvoiceLines.Add(lineDto);
                 }
+
+                salesInvoiceDto.TotalTax = _financialService.ComputeSalesInvoiceTaxes(salesInvoice).Sum(t => t.Value);
+                salesInvoiceDto.TotalAmountAfterTax = salesInvoiceDto.TotalInvoice;
 
                 // is this journal entry ready for posting?
                 if (!salesInvoiceDto.Posted && salesInvoiceDto.SalesInvoiceLines.Count >= 1)
@@ -511,15 +516,64 @@ namespace Api.Controllers
             return new ObjectResult(salesInvoicesDto);
         }
 
+        /// <summary>
+        /// Gets invoices for all customers that still have an unpaid balance, oldest first.
+        /// </summary>
+        /// <returns>The outstanding invoices.</returns>
+        [HttpGet("OutstandingInvoices")] // api/Sales/OutstandingInvoices
+        public IActionResult OutstandingInvoices()
+        {
+            var outstanding = new List<Dto.Sales.OutstandingInvoice>();
+
+            foreach (var salesInvoice in _salesService.GetSalesInvoices())
+            {
+                var invoice = ToOutstandingInvoice(salesInvoice);
+
+                if (invoice.Balance > 0)
+                    outstanding.Add(invoice);
+            }
+
+            return Ok(outstanding
+                .OrderBy(invoice => invoice.InvoiceDate)
+                .ThenBy(invoice => invoice.No)
+                .ToList());
+        }
+
+        /// <summary>
+        /// Builds the invoice totals and unpaid balance used by the outstanding invoice list and payment allocation.
+        /// </summary>
+        /// <param name="salesInvoice">The invoice with its lines, customer and allocations loaded.</param>
+        /// <returns>The invoice summary including its remaining balance.</returns>
+        private Dto.Sales.OutstandingInvoice ToOutstandingInvoice(Core.Domain.Sales.SalesInvoiceHeader salesInvoice) => new()
+        {
+            Id = salesInvoice.Id,
+            No = salesInvoice.No,
+            CustomerId = salesInvoice.CustomerId,
+            CustomerName = salesInvoice.Customer?.Party?.Name ?? "Unknown",
+            InvoiceDate = salesInvoice.Date,
+            Subtotal = Math.Round(salesInvoice.SalesInvoiceLines.Sum(line =>
+                line.Quantity * line.Amount * (1 - line.Discount / 100)), 2, MidpointRounding.ToEven),
+            Shipping = salesInvoice.ShippingHandlingCharge,
+            Tax = _financialService.ComputeSalesInvoiceTaxes(salesInvoice).Sum(tax => tax.Value),
+            Paid = salesInvoice.CustomerAllocations.Sum(allocation => allocation.Amount),
+            Posted = salesInvoice.GeneralLedgerHeaderId != null
+        };
+
         [HttpGet]
         [Route("SalesReceipts")] // api/Sales/SalesReceipts
         public IActionResult SalesReceipts()
         {
             var salesReceipts = _salesService.GetSalesReceipts();
+            var invoiceNumbers = _salesService.GetSalesInvoices().ToDictionary(i => i.Id, i => i.No);
             IList<Dto.Sales.SalesReceipt> salesReceiptsDto = new List<Dto.Sales.SalesReceipt>();
 
             foreach (var salesReceipt in salesReceipts)
             {
+                var appliedTo = salesReceipt.CustomerAllocations
+                    .Select(a => invoiceNumbers.TryGetValue(a.SalesInvoiceHeaderId, out var no) ? $"#{no}" : null)
+                    .Where(no => no != null)
+                    .Distinct();
+
                 var salesReceiptDto = new Dto.Sales.SalesReceipt()
                 {
                     Id = salesReceipt.Id,
@@ -529,6 +583,7 @@ namespace Api.Controllers
                     ReceiptDate = salesReceipt.Date,
                     Amount = salesReceipt.Amount,
                     RemainingAmountToAllocate = salesReceipt.AvailableAmountToAllocate,
+                    AppliedToInvoices = string.Join(", ", appliedTo),
                     PaymentMethod = salesReceipt.PaymentMethod,
                     ReferenceNo = salesReceipt.ReferenceNo,
                     Memo = salesReceipt.Memo
@@ -769,20 +824,30 @@ namespace Api.Controllers
             return Ok(checked(maximum + 1));
         }
 
-        /// <summary>Calculates the output tax included in invoice lines for the customer's tax profile.</summary>
+        /// <summary>Calculates customer tax added to discounted invoice lines and shipping.</summary>
         /// <param name="request">The customer and invoice lines to evaluate.</param>
-        /// <returns>The rounded included tax amount and the customer's configured tax percentages.</returns>
+        /// <returns>The rounded tax amount and the customer's configured tax percentages.</returns>
         [HttpPost("CalculateInvoiceTax")]
         public IActionResult CalculateInvoiceTax([FromBody] Dto.Sales.InvoiceTaxRequest request)
         {
             if (request == null || request.CustomerId <= 0)
                 return BadRequest(new[] { "Select a customer to calculate invoice tax." });
 
-            var tax = request.Lines
-                .Where(line => line.ItemId > 0 && line.Quantity > 0 && line.Amount > 0)
-                .SelectMany(line => _financialService.ComputeOutputTax(request.CustomerId, line.ItemId,
-                    line.Quantity, line.Amount, Math.Clamp(line.Discount, 0, 100)))
-                .Sum(lineTax => lineTax.Value);
+            if (request.Shipping < 0)
+                return BadRequest(new[] { "Shipping cannot be negative." });
+            var invoice = new Core.Domain.Sales.SalesInvoiceHeader
+            {
+                CustomerId = request.CustomerId,
+                ShippingHandlingCharge = request.Shipping
+            };
+            foreach (var line in request.Lines
+                .Where(line => line.ItemId > 0 && line.Quantity > 0 && line.Amount > 0))
+                invoice.SalesInvoiceLines.Add(new Core.Domain.Sales.SalesInvoiceLine
+                {
+                    ItemId = line.ItemId, Quantity = line.Quantity, Amount = line.Amount,
+                    Discount = Math.Clamp(line.Discount, 0, 100)
+                });
+            var tax = _financialService.ComputeSalesInvoiceTaxes(invoice).Sum(t => t.Value);
             return Ok(new Dto.Sales.InvoiceTaxResult
             {
                 Amount = Math.Round(tax, 2, MidpointRounding.ToEven),
@@ -912,6 +977,8 @@ namespace Api.Controllers
 
                     if (salesInvoice.GeneralLedgerHeaderId.HasValue)
                         throw new Exception("Invoice is already posted. Update is not allowed.");
+                    if (salesInvoiceDto.SalesInvoiceLines == null || salesInvoiceDto.SalesInvoiceLines.Count == 0)
+                        return BadRequest(new[] { "Enter at least one invoice line." });
 
                     if (invoiceNumber != null)
                         salesInvoice.No = invoiceNumber;
@@ -951,18 +1018,26 @@ namespace Api.Controllers
                             salesOrderLine.ItemId = line.ItemId.GetValueOrDefault();
                             salesOrderLine.MeasurementId = line.MeasurementId.GetValueOrDefault();
 
-                            // but on what order should the new orderline be added?
-                            // note: each invoice is map to one and only one sales order. it can't be done that invoice lines came from multiple sales orders.
-                            // with this rule, we are sure that all invoice lines are contained in the same sales order.
-                            // therefore, we could just pick the first line, get the salesorderlineid, then get the salesorderheader.
-
-                            // you will retrieve salesorder one time.
+                            // Each invoice belongs to one sales order; attach the new line to that order.
                             if (salesOrder == null)
                             {
-                                // use the last value of existingLine
-                                salesOrder = _salesService.GetSalesOrderLineById(existingLine!.SalesOrderLine.SalesOrderHeaderId).SalesOrderHeader;
-                                salesOrder.SalesOrderLines.Add(salesOrderLine);
+                                var linkedOrderLineId = salesInvoice.SalesInvoiceLines
+                                    .Select(invoiceLine => invoiceLine.SalesOrderLineId)
+                                    .FirstOrDefault(id => id.HasValue);
+                                salesOrder = linkedOrderLineId.HasValue
+                                    ? _salesService.GetSalesOrderLineById(linkedOrderLineId.Value)?.SalesOrderHeader
+                                    : null;
+                                salesOrder ??= new Core.Domain.Sales.SalesOrderHeader
+                                {
+                                    Date = salesInvoiceDto.InvoiceDate,
+                                    PaymentTermId = salesInvoiceDto.PaymentTermId,
+                                    CustomerId = salesInvoiceDto.CustomerId,
+                                    ReferenceNo = salesInvoiceDto.ReferenceNo,
+                                    Status = SalesOrderStatus.FullyInvoiced
+                                };
                             }
+
+                            salesOrder.SalesOrderLines.Add(salesOrderLine);
 
                             salesInvoiceLine.SalesOrderLine = salesOrderLine; // map invoice line to newly added orderline
                         }
@@ -1171,6 +1246,21 @@ namespace Api.Controllers
                 if (customer.CustomerAdvancesAccountId != (int)receiptDto.AccountToCreditId)
                     throw new Exception("Invalid account.");
 
+                // A payment started from an outstanding invoice is applied to that invoice.
+                int? invoiceId = (int?)receiptDto.InvoiceId;
+                Core.Domain.Sales.SalesInvoiceHeader? invoiceToPay = null;
+                decimal invoiceBalance = 0;
+                if (invoiceId is > 0)
+                {
+                    invoiceToPay = _salesService.GetSalesInvoiceById(invoiceId.Value);
+                    if (invoiceToPay == null || invoiceToPay.CustomerId != (int)receiptDto.CustomerId)
+                        return new BadRequestObjectResult(new[] { "The selected invoice does not belong to this customer." });
+
+                    invoiceBalance = ToOutstandingInvoice(invoiceToPay).Balance;
+                    if (invoiceBalance <= 0)
+                        return new BadRequestObjectResult(new[] { "The selected invoice is already paid." });
+                }
+
                 var salesReceiptLine = new Core.Domain.Sales.SalesReceiptLine();
                 salesReceiptLine.AccountToCreditId = receiptDto.AccountToCreditId;
                 salesReceiptLine.AmountPaid = receiptDto.Amount;
@@ -1180,6 +1270,19 @@ namespace Api.Controllers
                 salesReceipt.SalesReceiptLines.Add(salesReceiptLine);
 
                 _salesService.AddSalesReceiptNoInvoice(salesReceipt);
+
+                if (invoiceToPay != null && salesReceipt.Id > 0)
+                {
+                    // Any amount above the invoice balance stays on the receipt for later allocation.
+                    _salesService.SaveCustomerAllocation(new Core.Domain.Sales.CustomerAllocation
+                    {
+                        CustomerId = salesReceipt.CustomerId,
+                        Date = salesReceipt.Date,
+                        SalesInvoiceHeaderId = invoiceToPay.Id,
+                        SalesReceiptHeaderId = salesReceipt.Id,
+                        Amount = Math.Min(salesReceipt.Amount, invoiceBalance)
+                    });
+                }
 
                 return new ObjectResult(Ok());
             }
@@ -1356,7 +1459,6 @@ namespace Api.Controllers
 
                 };
 
-                decimal? totalTax = 0;
                 foreach (var line in salesInvoice.SalesInvoiceLines)
                 {
                     var lineDto = new Dto.Sales.SalesInvoiceLine();
@@ -1371,16 +1473,11 @@ namespace Api.Controllers
                     lineDto.ItemDescription = _inventoryService.GetItemById(line.ItemId).Description;
                     lineDto.MeasurementDescription = _inventoryService.GetMeasurementById(line.MeasurementId).Description;
 
-                    if (_taxService != null)
-                    {
-                        totalTax += _financialService.ComputeOutputTax(salesInvoice.CustomerId,
-                            line.ItemId, line.Quantity, line.Amount, line.Discount).Sum(t => t.Value);
-
-                    }
                     salesInvoiceDto.SalesInvoiceLines.Add(lineDto);
                 }
-                salesInvoiceDto.TotalTax = totalTax;
-                salesInvoiceDto.TotalAmountAfterTax = (salesInvoiceDto.Amount + salesInvoiceDto.TotalTax);
+                salesInvoiceDto.Shipping = salesInvoice.ShippingHandlingCharge;
+                salesInvoiceDto.TotalTax = _financialService.ComputeSalesInvoiceTaxes(salesInvoice).Sum(t => t.Value);
+                salesInvoiceDto.TotalAmountAfterTax = salesInvoiceDto.TotalInvoice;
 
 
                 return new ObjectResult(salesInvoiceDto);

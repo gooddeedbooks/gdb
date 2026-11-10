@@ -5,7 +5,7 @@ namespace Dto.Sales
     /// <summary>Contains the calculated invoice tax and configured customer tax rates.</summary>
     public class InvoiceTaxResult
     {
-        /// <summary>Gets or sets the included tax amount.</summary>
+        /// <summary>Gets or sets the tax added to the invoice subtotal and shipping.</summary>
         public decimal Amount { get; set; }
 
         /// <summary>Gets or sets the percentages from the customer's active tax group.</summary>
@@ -17,6 +17,9 @@ namespace Dto.Sales
     {
         /// <summary>Gets or sets the customer whose tax group applies.</summary>
         public int CustomerId { get; set; }
+
+        /// <summary>Gets or sets the taxable shipping charge.</summary>
+        public decimal Shipping { get; set; }
 
         /// <summary>Gets or sets the invoice lines to evaluate.</summary>
         public IList<InvoiceTaxLine> Lines { get; set; } = new List<InvoiceTaxLine>();

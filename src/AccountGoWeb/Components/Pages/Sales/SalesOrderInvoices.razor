@@ -1,0 +1,210 @@
+﻿@using System.Globalization
+@using OutstandingInvoiceDto = Dto.Sales.OutstandingInvoice
+@inject HttpClient Http
+@inject NavigationManager Navigation
+
+<div class="sales-order-invoices">
+    <div class="toolbar-actions mb-3">
+        @if (PaymentMode)
+        {
+            <button class="btn btn-primary" type="button"
+                    @onclick="ReceivePaymentForSelectedInvoice"
+                    disabled="@(selectedInvoice is null)"
+                    title="Record a payment against the selected invoice">
+                <i class="fas fa-hand-holding-usd" aria-hidden="true"></i> Receive Payment
+            </button>
+        }
+        else
+        {
+            <button class="btn btn-primary" type="button" @onclick="AddInvoice">
+                <i class="fas fa-plus" aria-hidden="true"></i> New Invoice
+            </button>
+
+            <button class="btn btn-primary" type="button"
+                    @onclick="EditSelectedInvoice"
+                    disabled="@(selectedInvoice is null || selectedInvoice.Posted)"
+                    title="@(selectedInvoice?.Posted == true ? "Posted invoices cannot be edited." : "Edit the selected invoice")">
+                <i class="fas fa-pen" aria-hidden="true"></i> Edit Invoice
+            </button>
+        }
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="empty-state">Loading invoices...</div>
+    }
+    else if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="alert alert-danger">@errorMessage</div>
+    }
+    else
+    {
+        <div class="invoice-filters">
+            <select class="form-select form-control-themed" aria-label="Filter by customer"
+                    @bind="customerFilter" @bind:after="ClearHiddenSelection">
+                <option value="0">All customers</option>
+                @foreach (var customer in invoices.GroupBy(x => x.CustomerId).Select(g => g.First()).OrderBy(x => x.CustomerName))
+                {
+                    <option value="@customer.CustomerId">@customer.CustomerName</option>
+                }
+            </select>
+            <span class="balance-summary">
+                @FilteredInvoices.Count() invoice(s) outstanding — Balance @FormatCurrency(FilteredInvoices.Sum(x => x.Balance))
+            </span>
+        </div>
+
+        @if (!FilteredInvoices.Any())
+        {
+            <div class="empty-state">No outstanding invoices found.</div>
+        }
+        else
+        {
+            <div class="table-shell table-responsive">
+                <table class="table invoices-table">
+                    <thead>
+                        <tr>
+                            <th @onclick='() => SortBy(nameof(OutstandingInvoiceDto.No))'>Invoice No @GetSortIndicator(nameof(OutstandingInvoiceDto.No))</th>
+                            <th @onclick='() => SortBy(nameof(OutstandingInvoiceDto.CustomerName))'>Customer Name @GetSortIndicator(nameof(OutstandingInvoiceDto.CustomerName))</th>
+                            <th @onclick='() => SortBy(nameof(OutstandingInvoiceDto.InvoiceDate))'>Invoice Date @GetSortIndicator(nameof(OutstandingInvoiceDto.InvoiceDate))</th>
+                            <th class="text-end">Subtotal</th>
+                            <th class="text-end">Shipping</th>
+                            <th class="text-end">Tax</th>
+                            <th class="text-end">Total</th>
+                            <th class="text-end">Paid</th>
+                            <th class="text-end" @onclick='() => SortBy(nameof(OutstandingInvoiceDto.Balance))'>Balance @GetSortIndicator(nameof(OutstandingInvoiceDto.Balance))</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var invoice in GetSortedInvoices())
+                        {
+                            var isSelected = selectedInvoice?.Id == invoice.Id;
+
+                            <tr class="clickable-row @(isSelected ? "selected-row" : "")"
+                                @key="invoice.Id"
+                                @onclick="() => SelectInvoice(invoice)"
+                                @ondblclick="() => OpenInvoice(invoice)">
+                                <td>@invoice.No</td>
+                                <td>@invoice.CustomerName</td>
+                                <td>@invoice.InvoiceDate.ToString("yyyy-MM-dd")</td>
+                                <td class="text-end">@FormatCurrency(invoice.Subtotal)</td>
+                                <td class="text-end">@FormatCurrency(invoice.Shipping)</td>
+                                <td class="text-end">@FormatCurrency(invoice.Tax)</td>
+                                <td class="text-end">@FormatCurrency(invoice.Total)</td>
+                                <td class="text-end">@FormatCurrency(invoice.Paid)</td>
+                                <td class="text-end">@FormatCurrency(invoice.Balance)</td>
+                                <td>@(invoice.Posted ? "Posted" : "Draft")</td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="6">Totals</td>
+                            <td class="text-end">@FormatCurrency(FilteredInvoices.Sum(x => x.Total))</td>
+                            <td class="text-end">@FormatCurrency(FilteredInvoices.Sum(x => x.Paid))</td>
+                            <td class="text-end">@FormatCurrency(FilteredInvoices.Sum(x => x.Balance))</td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// When true, the list is used on Customer Payments: the toolbar and double-click
+    /// record a payment for the invoice instead of editing it.
+    /// </summary>
+    [Parameter]
+    public bool PaymentMode { get; set; }
+
+    private List<OutstandingInvoiceDto> invoices = new();
+    private OutstandingInvoiceDto? selectedInvoice;
+    private string? errorMessage;
+    private bool isLoading = true;
+    private int customerFilter;
+    private string sortBy = nameof(OutstandingInvoiceDto.InvoiceDate);
+    private bool sortAscending = true;
+    private string baseApiUrl = string.Empty;
+
+    private IEnumerable<OutstandingInvoiceDto> FilteredInvoices =>
+        customerFilter == 0 ? invoices : invoices.Where(x => x.CustomerId == customerFilter);
+
+    /// <summary>Loads unpaid invoices for all customers.</summary>
+    protected override async Task OnInitializedAsync()
+    {
+        baseApiUrl = Environment.GetEnvironmentVariable("APIURL") ?? "http://localhost:8001/api/";
+        try
+        {
+            var response = await Http.GetAsync($"{baseApiUrl}sales/OutstandingInvoices");
+            if (response.IsSuccessStatusCode)
+                invoices = await response.Content.ReadFromJsonAsync<List<OutstandingInvoiceDto>>() ?? new();
+            else
+                errorMessage = "Unable to load outstanding invoices.";
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading outstanding invoices: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private static string FormatCurrency(decimal value) => "$" + value.ToString("N2", CultureInfo.InvariantCulture);
+
+    private static long GetNumericNo(string? no) => long.TryParse(no, out var number) ? number : long.MaxValue;
+
+    private IEnumerable<OutstandingInvoiceDto> GetSortedInvoices() => sortBy switch
+    {
+        nameof(OutstandingInvoiceDto.No) => sortAscending
+            ? FilteredInvoices.OrderBy(x => GetNumericNo(x.No)).ThenBy(x => x.No)
+            : FilteredInvoices.OrderByDescending(x => GetNumericNo(x.No)).ThenByDescending(x => x.No),
+        nameof(OutstandingInvoiceDto.CustomerName) => sortAscending ? FilteredInvoices.OrderBy(x => x.CustomerName) : FilteredInvoices.OrderByDescending(x => x.CustomerName),
+        nameof(OutstandingInvoiceDto.Balance) => sortAscending ? FilteredInvoices.OrderBy(x => x.Balance) : FilteredInvoices.OrderByDescending(x => x.Balance),
+        _ => sortAscending ? FilteredInvoices.OrderBy(x => x.InvoiceDate) : FilteredInvoices.OrderByDescending(x => x.InvoiceDate)
+    };
+
+    private void SortBy(string column)
+    {
+        sortAscending = sortBy != column || !sortAscending;
+        sortBy = column;
+    }
+
+    private string GetSortIndicator(string column) => sortBy != column ? string.Empty : sortAscending ? "↓" : "↑";
+
+    private void SelectInvoice(OutstandingInvoiceDto invoice) =>
+        selectedInvoice = selectedInvoice?.Id == invoice.Id ? null : invoice;
+
+    private void ClearHiddenSelection()
+    {
+        if (selectedInvoice is not null && !FilteredInvoices.Any(x => x.Id == selectedInvoice.Id))
+            selectedInvoice = null;
+    }
+
+    private void AddInvoice() => Navigation.NavigateTo("/Sales/AddSalesInvoice", forceLoad: true);
+
+    private void EditSelectedInvoice()
+    {
+        if (selectedInvoice is { Posted: false })
+            Navigation.NavigateTo($"/Sales/EditSalesInvoice?id={selectedInvoice.Id}", forceLoad: true);
+    }
+
+    private void ReceivePaymentForSelectedInvoice()
+    {
+        if (selectedInvoice is not null)
+            Navigation.NavigateTo($"/Sales/NewCustomerPayment?invoiceId={selectedInvoice.Id}", forceLoad: true);
+    }
+
+    private void OpenInvoice(OutstandingInvoiceDto invoice)
+    {
+        selectedInvoice = invoice;
+        if (PaymentMode)
+            ReceivePaymentForSelectedInvoice();
+        else
+            EditSelectedInvoice();
+    }
+}

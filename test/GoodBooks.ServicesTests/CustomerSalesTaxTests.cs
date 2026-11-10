@@ -71,6 +71,36 @@ namespace GoodBooks.ServicesTests
             Assert.Throws<KeyNotFoundException>(() => Service().GetSalesTaxes(99, 1, 1, 100, 0));
         }
 
+        [Theory]
+        [InlineData("7", "112", "5", "7")]
+        [InlineData("6", "111", "5", "6")]
+        [InlineData("9.975", "114.975", "5", "9.975")]
+        public void GetSalesTaxes_CombinedCanadianTaxes_UseSameNetBase(
+            string provincialRate, string gross, string expectedGst, string expectedProvincial)
+        {
+            var culture = System.Globalization.CultureInfo.InvariantCulture;
+            var group = new TaxGroup { IsActive = true };
+            group.TaxGroupTax.Add(new TaxGroupTax { TaxId = 1 });
+            group.TaxGroupTax.Add(new TaxGroupTax { TaxId = 2 });
+            SetCustomers(new Customer { Id = 9, TaxGroup = group });
+            SetTaxes(new Tax { Id = 1, Rate = 5, IsActive = true },
+                new Tax { Id = 2, Rate = decimal.Parse(provincialRate, culture), IsActive = true });
+
+            var result = Service().GetSalesTaxes(9, 1, 1, decimal.Parse(gross, culture), 0);
+
+            Assert.Equal(decimal.Parse(expectedGst, culture), result.Single(t => t.Key == 1).Value);
+            Assert.Equal(decimal.Parse(expectedProvincial, culture), result.Single(t => t.Key == 2).Value);
+        }
+
+        [Fact]
+        public void GetSalesLineTaxAmount_CombinedTaxAndPercentageDiscount_UsesDiscountedBase()
+        {
+            var result = Service().GetSalesLineTaxAmount(2, 112, 10,
+                new[] { new Tax { Rate = 5 }, new Tax { Rate = 7 } });
+
+            Assert.Equal(21.6m, result);
+        }
+
         private void SetCustomers(params Customer[] values)
         {
             customers.Setup(repo => repo.GetAllIncluding(It.IsAny<Expression<Func<Customer, object>>[]>()))

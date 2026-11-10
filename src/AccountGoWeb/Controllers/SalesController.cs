@@ -41,6 +41,20 @@ namespace AccountGoWeb.Controllers
             return View();
         }
 
+        /// <summary>
+        /// Opens an existing sales invoice in the invoice editor.
+        /// </summary>
+        /// <param name="id">The sales invoice identifier.</param>
+        /// <returns>The invoice editor, or a redirect when no invoice is specified.</returns>
+        public IActionResult EditSalesInvoice(int id)
+        {
+            if (id <= 0)
+                return RedirectToAction(nameof(SalesOrders), new { tab = "invoices" });
+
+            ViewBag.PageContentHeader = "Edit Sales Invoice";
+            return View("AddSalesInvoice");
+        }
+
         public IActionResult AddSalesOrder()
         {
             ViewBag.PageContentHeader = string.Empty;

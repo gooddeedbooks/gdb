@@ -3,6 +3,8 @@
 @using AccountGoWeb.Models
 @using AccountGoWeb.Models.Sales
 @using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.WebUtilities
+@using OutstandingInvoiceDto = Dto.Sales.OutstandingInvoice
 
 <style>
     label,
@@ -49,6 +51,15 @@
                 {
                     <div class="alert alert-success" role="alert">
                         <i class="fas fa-check-circle"></i> @successMessage
+                    </div>
+                }
+                @if (invoiceToPay != null)
+                {
+                    <div class="alert alert-info" role="status">
+                        <i class="fas fa-file-invoice-dollar"></i>
+                        This payment will be applied to invoice <strong>#@invoiceToPay.No</strong>
+                        (balance $@invoiceToPay.Balance.ToString("N2", System.Globalization.CultureInfo.InvariantCulture)).
+                        Any amount above the balance stays available for allocation.
                     </div>
                 }
                 <div class="card">
@@ -182,6 +193,8 @@
     private string paymentMethod = "";
     private string memo = "";
     private string successMessage = "";
+    // Invoice selected on Customer Payments; the saved payment is allocated to it.
+    private OutstandingInvoiceDto? invoiceToPay;
 
     private readonly List<string> paymentMethods = new()
     {
@@ -262,6 +275,8 @@
                 }
             }
 
+            await LoadInvoiceToPay(client, apiurl);
+
             loading = false;
         }
         catch (Exception ex)
@@ -271,8 +286,31 @@
         }
     }
 
+    /// <summary>
+    /// Pre-fills the form from the <c>invoiceId</c> query parameter when the payment
+    /// was started from an outstanding invoice.
+    /// </summary>
+    private async Task LoadInvoiceToPay(HttpClient client, string apiurl)
+    {
+        var query = QueryHelpers.ParseQuery(new Uri(Navigation.Uri).Query);
+        if (!query.TryGetValue("invoiceId", out var value) || !int.TryParse(value, out var invoiceId))
+            return;
+
+        var invoices = await client.GetFromJsonAsync<List<OutstandingInvoiceDto>>($"{apiurl}sales/OutstandingInvoices");
+        invoiceToPay = invoices?.FirstOrDefault(x => x.Id == invoiceId);
+        if (invoiceToPay == null)
+            return;
+
+        SelectCustomer(invoiceToPay.CustomerId);
+        amount = invoiceToPay.Balance;
+        memo = $"Payment for invoice #{invoiceToPay.No}";
+    }
+
     private void OnCustomerChanged(ChangeEventArgs e)
     {
+        // Choosing another customer detaches the payment from the pre-selected invoice.
+        invoiceToPay = null;
+
         if (e.Value == null || string.IsNullOrEmpty(e.Value.ToString()))
         {
             customerId = null;
@@ -283,25 +321,30 @@
 
         if (int.TryParse(e.Value.ToString(), out var selectedCustomerId))
         {
-            customerId = selectedCustomerId;
+            SelectCustomer(selectedCustomerId);
+        }
+    }
 
-            // Silently populate the credit account (customer's prepayment account)
-            // — the API requires AccountToCreditId to match customer.CustomerAdvancesAccountId,
-            //   but the instructor does not want this exposed in the UI.
-            if (customerAdvanceAccounts.TryGetValue(selectedCustomerId, out var advanceAccountId))
-            {
-                accountToCreditId = advanceAccountId;
-            }
+    private void SelectCustomer(int selectedCustomerId)
+    {
+        customerId = selectedCustomerId;
 
-            // Display customer balance
-            if (customerBalances.TryGetValue(selectedCustomerId, out var bal))
-            {
-                customerBalance = bal;
-            }
-            else
-            {
-                customerBalance = 0;
-            }
+        // Silently populate the credit account (customer's prepayment account)
+        // — the API requires AccountToCreditId to match customer.CustomerAdvancesAccountId,
+        //   but the instructor does not want this exposed in the UI.
+        if (customerAdvanceAccounts.TryGetValue(selectedCustomerId, out var advanceAccountId))
+        {
+            accountToCreditId = advanceAccountId;
+        }
+
+        // Display customer balance
+        if (customerBalances.TryGetValue(selectedCustomerId, out var bal))
+        {
+            customerBalance = bal;
+        }
+        else
+        {
+            customerBalance = 0;
         }
     }
 
@@ -351,7 +394,8 @@
                 Amount = amount,
                 PaymentMethod = paymentMethod,
                 ReferenceNo = referenceNo,
-                Memo = string.IsNullOrWhiteSpace(memo) ? null : memo
+                Memo = string.IsNullOrWhiteSpace(memo) ? null : memo,
+                InvoiceId = invoiceToPay?.Id
             };
 
             var json = System.Text.Json.JsonSerializer.Serialize(receiptData);
@@ -368,7 +412,7 @@
                 }
                 else
                 {
-                    Navigation.NavigateTo("/Sales/CustomerPayments", forceLoad: true);
+                    Navigation.NavigateTo("/Sales/CustomerPayments?tab=payments", forceLoad: true);
                 }
             }
             else
@@ -393,6 +437,7 @@
     private void ResetFormFields()
     {
         customerId = null;
+        invoiceToPay = null;
         customerBalance = 0;
         receiptDate = DateTime.Now;
         accountToDebitId = null;

@@ -87,27 +87,8 @@ namespace Services.TaxSystem
 
         public List<KeyValuePair<int, decimal>> GetPurchaseTaxes(int vendorId, int itemId, decimal quantity, decimal amount, decimal discount)
         {
-            decimal taxAmount = 0, amountXquantity = 0, discountAmount = 0, subTotalAmount = 0;
-
-            var taxes = new List<KeyValuePair<int, decimal>>();
-            var item = _itemRepo.GetById(itemId);
-
-            amountXquantity = amount * quantity;
-
-            if (discount > 0)
-                discountAmount = (discount / 100) * amountXquantity;
-
-            subTotalAmount = amountXquantity - discountAmount;
-
-            var intersectionTaxes = GetIntersectionTaxes(itemId, vendorId, Core.Domain.PartyTypes.Vendor);
-
-            foreach (var tax in intersectionTaxes)
-            {
-                taxAmount = subTotalAmount - (subTotalAmount / (1 + (tax.Rate / 100)));
-                taxes.Add(new KeyValuePair<int, decimal>(tax.Id, taxAmount));
-            }
-
-            return taxes;
+            return TaxCalculator.IncludedTaxes(quantity, amount, discount,
+                GetIntersectionTaxes(itemId, vendorId, Core.Domain.PartyTypes.Vendor));
         }
 
         public List<KeyValuePair<int, decimal>> GetSalesTaxes(int customerId, IEnumerable<SalesInvoiceLine> salesInvoiceLines)
@@ -124,24 +105,7 @@ namespace Services.TaxSystem
 
         public List<KeyValuePair<int, decimal>> GetSalesTaxes(int customerId, int itemId, decimal quantity, decimal amount, decimal discount)
         {
-            decimal taxAmount = 0, amountXquantity = 0, discountAmount = 0, subTotalAmount = 0;
-
-            var taxes = new List<KeyValuePair<int, decimal>>();
-
-            amountXquantity = amount * quantity;
-
-            if (discount > 0)
-                discountAmount = (discount / 100) * amountXquantity;
-
-            subTotalAmount = amountXquantity - discountAmount;
-
-            foreach (var tax in GetCustomerTaxes(customerId))
-            {
-                taxAmount = subTotalAmount - (subTotalAmount / (1 + (tax.Rate / 100)));
-                taxes.Add(new KeyValuePair<int, decimal>(tax.Id, taxAmount));
-            }
-
-            return taxes;
+            return TaxCalculator.IncludedTaxes(quantity, amount, discount, GetCustomerTaxes(customerId));
         }
 
         /// <summary>Gets active taxes from the customer's assigned active tax group.</summary>
@@ -382,14 +346,7 @@ namespace Services.TaxSystem
 
         public decimal GetSalesLineTaxAmount(decimal quantity, decimal amount, decimal discount, IEnumerable<Tax> taxes)
         {
-            decimal lineTaxTotal = 0;
-            amount = (amount * quantity) - discount;
-            foreach (var tax in taxes)
-            {
-                lineTaxTotal = lineTaxTotal + (amount - (amount / (1 + (tax.Rate / 100))));
-            }
-
-            return lineTaxTotal;
+            return TaxCalculator.IncludedTaxes(quantity, amount, discount, taxes).Sum(t => t.Value);
         }
     }
 }

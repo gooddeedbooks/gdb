@@ -16,11 +16,12 @@
 <div class="container-fluid">
     <div class="row mb-3">
         <div class="col">
+            <h1 class="h3 mb-0">@PageHeading</h1>
         </div>
         <div class="col text-end">
-            <a href="/Sales/SalesOrders" class="btn btn-outline-secondary btn-sm">
+            <a href="@ReturnUrl" class="btn btn-outline-secondary btn-sm">
                 <i class="fas fa-arrow-left"></i>
-                Back to Orders
+                @(IsFromOrder ? "Back to Orders" : "Back to Invoices")
             </a>
         </div>
     </div>
@@ -36,6 +37,13 @@
             <div class="alert alert-danger alert-dismissible fade show" role="alert">
                 <strong>Error:</strong> @errorMessage
                 <button type="button" class="btn-close" @onclick="() => errorMessage = null"></button>
+            </div>
+        }
+
+        @if (isPosted)
+        {
+            <div class="alert alert-warning" role="status">
+                This invoice is posted to the general ledger and cannot be edited.
             </div>
         }
 
@@ -164,12 +172,12 @@
                                     <label class="col-6 col-form-label text-end" for="invoice-shipping"><strong>Shipping</strong></label>
                                     <div class="col-6">
                                         <input id="invoice-shipping" type="number" min="0" step="0.01" class="form-control form-control-themed"
-                                               @bind="shipping" disabled="@isSaving" />
+                                               @bind="shipping" @bind:after="RecalculateAsync" disabled="@isSaving" />
                                     </div>
                                 </div>
                                 <div class="row g-2 align-items-center mb-2">
                                     <label class="col-6 col-form-label text-end" for="invoice-tax"
-                                           title="Tax is calculated from the customer's tax group and is included in item prices.">
+                                           title="Tax is added to the discounted item subtotal plus shipping using the customer's tax group.">
                                         <strong>@TaxLabel</strong>
                                     </label>
                                     <div class="col-6">
@@ -190,8 +198,8 @@
                 </div>
 
                 <div class="mt-4">
-                    <button class="btn btn-primary btn-sm" @onclick="SaveSalesInvoice" disabled="@(isSaving || !isLoaded)">Save</button>
-                    <a href="/Sales/SalesInvoices" class="btn btn-secondary btn-sm ms-2">Close</a>
+                    <button class="btn btn-primary btn-sm" @onclick="SaveSalesInvoice" disabled="@(isSaving || !isLoaded || isPosted || isCalculatingTax || taxCalculationFailed)">Save</button>
+                    <a href="@ReturnUrl" class="btn btn-secondary btn-sm ms-2">Close</a>
                 </div>
             </div>
         </div>
@@ -251,6 +259,10 @@
     private bool isSaving;
     private bool isLoaded;
     private bool IsFromOrder => OrderId.GetValueOrDefault() > 0;
+    private bool isPosted;
+    private bool IsEditing => !IsFromOrder && Id > 0;
+    private string PageHeading => IsEditing ? "Edit Invoice" : "New Invoice";
+    private string ReturnUrl => IsFromOrder ? "/Sales/SalesOrders" : "/Sales/SalesOrders?tab=invoices";
     private string? errorMessage = null;
 
     private int invoiceId = 0;
@@ -263,12 +275,13 @@
 
     private decimal shipping;
     private decimal taxAmount;
+    private bool isCalculatingTax;
+    private bool taxCalculationFailed;
     private IList<decimal> taxRates = new List<decimal>();
     private string TaxLabel => "Tax " +
-        (taxRates.Count == 0 ? "0%" : string.Join(" + ", taxRates.Select(rate => rate.ToString("0.##", CultureInfo.InvariantCulture) + "%"))) +
-        " (included)";
+        (taxRates.Count == 0 ? "0%" : string.Join(" + ", taxRates.Select(rate => rate.ToString("0.###", CultureInfo.InvariantCulture) + "%")));
     private int taxRequestVersion;
-    private decimal TotalInvoice => totalAmount + shipping;
+    private decimal TotalInvoice => totalAmount + shipping + taxAmount;
 
     private static string FormatCurrency(decimal value) => "$" + value.ToString("N2", CultureInfo.InvariantCulture);
 
@@ -457,7 +470,11 @@
                     }
 
                     if (!IsFromOrder)
+                    {
                         shipping = GetJsonDecimal(invoiceData, "shipping") ?? 0;
+                        isPosted = invoiceData.TryGetProperty("posted", out var postedElem) &&
+                            postedElem.ValueKind == JsonValueKind.True;
+                    }
 
                     // Parse line items - works for both orders and invoices
                     var linesProperty = IsFromOrder ? "salesOrderLines" : "salesInvoiceLines";
@@ -537,6 +554,7 @@
     private async Task LoadTaxAsync()
     {
         var version = ++taxRequestVersion;
+        taxCalculationFailed = false;
         var lines = lineItems
             .Where(line => line.ItemId.GetValueOrDefault() > 0 && line.Quantity.GetValueOrDefault() > 0 && line.Amount.GetValueOrDefault() > 0)
             .Select(line => new
@@ -549,6 +567,7 @@
 
         if (customerId <= 0)
         {
+            isCalculatingTax = false;
             taxAmount = 0;
             taxRates.Clear();
             return;
@@ -556,9 +575,11 @@
 
         try
         {
+            isCalculatingTax = true;
             var apiurl = Environment.GetEnvironmentVariable("APIURL") ?? "http://localhost:8001/api/";
             using var client = ClientFactory.CreateClient();
-            var response = await client.PostAsJsonAsync($"{apiurl}sales/CalculateInvoiceTax", new { CustomerId = customerId, Lines = lines });
+            var response = await client.PostAsJsonAsync($"{apiurl}sales/CalculateInvoiceTax",
+                new { CustomerId = customerId, Shipping = shipping, Lines = lines });
             response.EnsureSuccessStatusCode();
             var tax = await response.Content.ReadFromJsonAsync<Dto.Sales.InvoiceTaxResult>();
             if (tax == null)
@@ -572,7 +593,15 @@
         catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException or TaskCanceledException)
         {
             if (version == taxRequestVersion)
+            {
+                taxCalculationFailed = true;
                 errorMessage = "Unable to calculate tax for this customer.";
+            }
+        }
+        finally
+        {
+            if (version == taxRequestVersion)
+                isCalculatingTax = false;
         }
     }
 
@@ -590,7 +619,7 @@
 
     private async Task SaveSalesInvoice()
     {
-        if (isSaving || !isLoaded) return;
+        if (isSaving || !isLoaded || isPosted || isCalculatingTax || taxCalculationFailed) return;
         try
         {
             if (invoiceNumber <= 0)
@@ -677,7 +706,7 @@ MeasurementId = line.MeasurementId
             if (response.IsSuccessStatusCode)
             {
                 await Task.Delay(100);
-                Navigation.NavigateTo("/Sales/SalesInvoices", forceLoad: true);
+                Navigation.NavigateTo("/Sales/SalesOrders?tab=invoices", forceLoad: true);
             }
             else
             {

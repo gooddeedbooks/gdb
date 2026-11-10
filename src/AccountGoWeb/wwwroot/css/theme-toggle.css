@@ -215,6 +215,11 @@ body:not(.light-theme):not(.dark-theme) {
     width: var(--app-sidebar-width) !important;
 }
 
+/* navbar.css adds a margin to every <nav>; it pushed the sidebar past its edge. */
+.sidebar .sidebar-nav {
+    margin: 0;
+}
+
 .sidebar .nav-link {
     white-space: nowrap;
 }

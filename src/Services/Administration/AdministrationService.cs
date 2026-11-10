@@ -84,6 +84,10 @@ namespace Services.Administration
 
         public async Task<Result<Dto.TaxSystem.Tax>> CreateTaxAsync(Dto.TaxSystem.TaxForCreation taxForCreationDto)
         {
+            if (!IsValidTaxRate(taxForCreationDto.Rate))
+                return Result<Dto.TaxSystem.Tax>.Failure(Error.ValidationError(
+                    "Tax rate must be between 0 and 100 with at most three decimal places."));
+
             var query = from f in _taxRepo.Table
                         where f.TaxName == taxForCreationDto.TaxName || f.TaxCode == taxForCreationDto.TaxCode
                         select f;
@@ -172,6 +176,10 @@ namespace Services.Administration
                 return Result<Dto.TaxSystem.Tax>.Failure(Error.ValidationError("Tax data is required."));
             }
 
+            if (!IsValidTaxRate(taxForUpdateDto.Tax.Rate))
+                return Result<Dto.TaxSystem.Tax>.Failure(Error.ValidationError(
+                    "Tax rate must be between 0 and 100 with at most three decimal places."));
+
             var taxEntity = _taxService.GetTaxById(taxForUpdateDto.Tax.Id);
             if (taxEntity is null)
             {
@@ -188,12 +196,12 @@ namespace Services.Administration
             taxEntity.SalesAccount = salesTaxAccount;
             taxEntity.PurchasingAccount = purchaseTaxAccount;
 
-            taxEntity.TaxGroupTaxes.Clear();
-
-            if (taxForUpdateDto.TaxGroup != null)
+            if (taxForUpdateDto.TaxGroup != null &&
+                (taxForUpdateDto.TaxGroup.Id > 0 || !string.IsNullOrWhiteSpace(taxForUpdateDto.TaxGroup.Description)))
             {
                 var taxGroupEntity = AddNewTaxGroup(taxForUpdateDto.TaxGroup);
-                taxEntity.TaxGroupTaxes.Add(new Core.Domain.TaxSystem.TaxGroupTax
+                if (!taxEntity.TaxGroupTaxes.Any(t => t.TaxGroupId == taxGroupEntity.Id))
+                    taxEntity.TaxGroupTaxes.Add(new Core.Domain.TaxSystem.TaxGroupTax
                 {
                     TaxId = taxEntity.Id,
                     TaxGroupId = taxGroupEntity.Id,
@@ -201,12 +209,12 @@ namespace Services.Administration
                 });
             }
 
-            taxEntity.ItemTaxGroupTaxes.Clear();
-
-            if (taxForUpdateDto.ItemTaxGroup != null)
+            if (taxForUpdateDto.ItemTaxGroup != null &&
+                (taxForUpdateDto.ItemTaxGroup.Id > 0 || !string.IsNullOrWhiteSpace(taxForUpdateDto.ItemTaxGroup.Name)))
             {
                 var itemTaxGroupEntity = AddNewItemTaxGroup(taxForUpdateDto.ItemTaxGroup);
-                taxEntity.ItemTaxGroupTaxes.Add(new Core.Domain.TaxSystem.ItemTaxGroupTax
+                if (!taxEntity.ItemTaxGroupTaxes.Any(t => t.ItemTaxGroupId == itemTaxGroupEntity.Id))
+                    taxEntity.ItemTaxGroupTaxes.Add(new Core.Domain.TaxSystem.ItemTaxGroupTax
                 {
                     TaxId = taxEntity.Id,
                     ItemTaxGroupId = itemTaxGroupEntity.Id,
@@ -223,6 +231,11 @@ namespace Services.Administration
         public async Task UpdateTaxAsync(Tax tax)
         {
             await _taxRepo.UpdateAsync(tax);
+        }
+
+        private static bool IsValidTaxRate(decimal rate)
+        {
+            return rate >= 0 && rate <= 100 && decimal.Round(rate, 3) == rate;
         }
 
         public async Task<Result<Dto.TaxSystem.Tax>> DeleteTaxAsync(int taxId)

@@ -116,10 +116,12 @@ namespace GoodBooks.ServicesTests
         }
 
         [Fact]
-        public void CalculateInvoiceTax_CustomerTaxProfile_SumsIncludedTax()
+        public void CalculateInvoiceTax_CustomerTaxProfile_IncludesShippingInCalculation()
         {
             var financial = new Mock<IFinancialService>();
-            financial.Setup(service => service.ComputeOutputTax(9, 1, 10, 110, 0))
+            financial.Setup(service => service.ComputeSalesInvoiceTaxes(It.Is<SalesInvoiceHeader>(invoice =>
+                invoice.CustomerId == 9 && invoice.ShippingHandlingCharge == 15 &&
+                invoice.SalesInvoiceLines.Count == 1 && invoice.SalesInvoiceLines.First().Amount == 110)))
                 .Returns(new List<KeyValuePair<int, decimal>> { new(1, 100m), new(2, 0.555m) });
             var taxes = new Mock<ITaxService>();
             taxes.Setup(service => service.GetCustomerTaxes(9)).Returns(new[]
@@ -133,6 +135,7 @@ namespace GoodBooks.ServicesTests
             var request = new global::Dto.Sales.InvoiceTaxRequest
             {
                 CustomerId = 9,
+                Shipping = 15,
                 Lines = new List<global::Dto.Sales.InvoiceTaxLine>
                 {
                     new() { ItemId = 1, Quantity = 10, Amount = 110 },

@@ -7,6 +7,8 @@
     <div class="page-header">
         <h1>Sales Orders</h1>
 
+        @if (activeTab == OrdersTab)
+        {
         <div class="toolbar-actions">
             <a class="btn btn-primary" href="/Sales/AddSalesOrder">
                 <i class="fas fa-plus" aria-hidden="true"></i>
@@ -27,9 +29,35 @@
             </button>
 
         </div>
+        }
     </div>
 
-    @if (isLoading)
+    <div class="view-switch btn-group mb-4" role="tablist" aria-label="Sales order views">
+        <button type="button" role="tab" aria-selected="@(activeTab == OrdersTab ? "true" : "false")"
+                class="btn btn-lg @(activeTab == OrdersTab ? "btn-primary" : "btn-outline-primary")"
+                @onclick="() => SelectTab(OrdersTab)">
+            <i class="fas fa-file-alt me-2" aria-hidden="true"></i>Sales Orders
+            @if (salesOrders.Count > 0)
+            {
+                <span class="badge rounded-pill bg-success ms-2" aria-label="@salesOrders.Count sales orders">@salesOrders.Count</span>
+            }
+        </button>
+        <button type="button" role="tab" aria-selected="@(activeTab == InvoicesTab ? "true" : "false")"
+                class="btn btn-lg @(activeTab == InvoicesTab ? "btn-primary" : "btn-outline-primary")"
+                @onclick="() => SelectTab(InvoicesTab)">
+            <i class="fas fa-file-invoice-dollar me-2" aria-hidden="true"></i>Outstanding Invoices
+            @if (outstandingInvoiceCount > 0)
+            {
+                <span class="badge rounded-pill bg-danger ms-2" aria-label="@outstandingInvoiceCount outstanding invoices">@outstandingInvoiceCount</span>
+            }
+        </button>
+    </div>
+
+    @if (activeTab == InvoicesTab)
+    {
+        <SalesOrderInvoices />
+    }
+    else if (isLoading)
     {
         <div class="empty-state">Loading sales orders...</div>
     }
@@ -98,6 +126,15 @@
     // Base API URL loaded from environment so the page can call the backend.
     private string baseApiUrl = string.Empty;
 
+    private const string OrdersTab = "orders";
+    private const string InvoicesTab = "invoices";
+
+    // Selected tab; "?tab=invoices" opens the outstanding invoices list.
+    private string activeTab = OrdersTab;
+
+    // Number of unpaid invoices shown on the Outstanding Invoices button.
+    private int outstandingInvoiceCount;
+
     /// <summary>
     /// Runs once when the page is first created.
     /// It reads the API base URL and then loads the sales orders from the server.
@@ -105,7 +142,29 @@
     protected override async Task OnInitializedAsync()
     {
         baseApiUrl = Environment.GetEnvironmentVariable("APIURL") ?? "http://localhost:8001/api/";
-        await LoadSalesOrders();
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(Navigation.ToAbsoluteUri(Navigation.Uri).Query);
+        if (query.TryGetValue("tab", out var tab) && string.Equals(tab.ToString(), InvoicesTab, StringComparison.OrdinalIgnoreCase))
+            activeTab = InvoicesTab;
+        await Task.WhenAll(LoadSalesOrders(), LoadOutstandingInvoiceCount());
+    }
+
+    /// <summary>
+    /// Loads the number of unpaid invoices for the view switch badge.
+    /// The count is optional, so failures leave the badge hidden.
+    /// </summary>
+    private async Task LoadOutstandingInvoiceCount()
+    {
+        try
+        {
+            var invoices = await Http.GetFromJsonAsync<List<Dto.Sales.OutstandingInvoice>>($"{baseApiUrl}sales/OutstandingInvoices");
+            outstandingInvoiceCount = invoices?.Count ?? 0;
+        }
+        catch (HttpRequestException)
+        {
+        }
+        catch (System.Text.Json.JsonException)
+        {
+        }
     }
 
     /// <summary>
@@ -204,6 +263,15 @@
             return;
 
         Navigation.NavigateTo($"/Sales/SalesOrder?id={selectedOrder.Id}", forceLoad: true);
+    }
+
+    /// <summary>
+    /// Switches between the orders list and the outstanding invoices list.
+    /// </summary>
+    private void SelectTab(string tab)
+    {
+        activeTab = tab;
+        Navigation.NavigateTo(tab == InvoicesTab ? "/Sales/SalesOrders?tab=invoices" : "/Sales/SalesOrders", replace: true);
     }
 
     private void CreateInvoice()

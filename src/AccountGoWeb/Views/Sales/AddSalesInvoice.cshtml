@@ -1,5 +1,8 @@
 ﻿@using AccountGoWeb.Components.Pages.Sales
 @{
     int.TryParse(Context.Request.Query["orderId"].ToString(), out var orderId);
+    int.TryParse(Context.Request.Query["id"].ToString(), out var invoiceId);
 }
-<component type="typeof(SalesInvoice)" render-mode="ServerPrerendered" param-OrderId="@(orderId > 0 ? (int?)orderId : null)" />
+<component type="typeof(SalesInvoice)" render-mode="ServerPrerendered"
+           param-OrderId="@(orderId > 0 ? (int?)orderId : null)"
+           param-Id="@(orderId > 0 ? 0 : Math.Max(invoiceId, 0))" />

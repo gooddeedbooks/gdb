@@ -2226,7 +2226,7 @@ namespace Api.Data.Migrations.ApiDb
                         .HasColumnType("int");
 
                     b.Property<decimal>("Rate")
-                        .HasColumnType("decimal(18, 2)");
+                        .HasColumnType("decimal(18, 3)");
 
                     b.Property<int?>("SalesAccountId")
                         .HasColumnType("int");

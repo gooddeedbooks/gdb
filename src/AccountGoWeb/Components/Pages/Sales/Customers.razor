@@ -101,79 +101,11 @@
                         </tbody>
                     </table>
                 </div>
+                <p class="text-muted mt-2">Total: @customers.Count customer(s)</p>
             </div>
         </div>
     }
 </div>
-@if (isLoading)
-{
-    <div class="loading-container">
-        <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">Loading...</span>
-        </div>
-    </div>
-}
-else if (errorMessage != null)
-{
-    <div class="alert alert-danger">
-        <i class="fas fa-exclamation-circle"></i>
-        <strong>Error!</strong> @errorMessage
-    </div>
-}
-else if (customers == null || !customers.Any())
-{
-    <div class="alert alert-info">
-        <i class="fas fa-info-circle"></i> No customers found.
-    </div>
-}
-else
-{
-    <div>
-        <table class="customersTable">
-            <thead class="thead-dark">
-                <tr>
-                    <th @onclick="() => SortBy(nameof(CustomerDto.No))" class="cursor-pointer">
-                        No @GetSortIcon(nameof(CustomerDto.No))
-                    </th>
-                    <th @onclick="() => SortBy(nameof(CustomerDto.Name))" class="cursor-pointer">
-                        Name @GetSortIcon(nameof(CustomerDto.Name))
-                    </th>
-                    <th @onclick="() => SortBy(nameof(CustomerDto.Phone))" class="cursor-pointer">
-                        Phone @GetSortIcon(nameof(CustomerDto.Phone))
-                    </th>
-                    <th @onclick="() => SortBy(nameof(CustomerDto.Contact))" class="cursor-pointer">
-                        Contact @GetSortIcon(nameof(CustomerDto.Contact))
-                    </th>
-                    <th @onclick="() => SortBy(nameof(CustomerDto.TaxGroup))" class="cursor-pointer">
-                        Tax Group @GetSortIcon(nameof(CustomerDto.TaxGroup))
-                    </th>
-                    <th @onclick="() => SortBy(nameof(CustomerDto.Balance))" class="cursor-pointer">
-                        Balance @GetSortIcon(nameof(CustomerDto.Balance))
-                    </th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var customer in customers)
-                {
-                    <tr @onclick="() => SelectCustomer(customer)" class="customerRow cursor-pointer @(selectedCustomer?.Id == customer.Id ?"table-active" : "")">
-                        <td>
-                            <a href="/sales/customer/@customer.Id" class="link-inherit-underline">
-                                @customer.No
-                            </a>
-                        </td>
-                        <td>@customer.Name</td>
-                        <td>@customer.Phone</td>
-                        <td>@customer.Contact</td>
-                        <td>@customer.TaxGroup</td>
-                        <td class="text-right">@customer.Balance.ToString("N2")</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-        
-        <p class="text-muted mt-2">Total: @customers.Count() customer(s)</p>
-    </div>
-}
 
 @code {
     private List<CustomerDto>? customers;

@@ -35,6 +35,10 @@ namespace Services.Financial
         IEnumerable<Bank> GetCashAndBanks();
         List<KeyValuePair<int, decimal>> ComputeInputTax(int vendorId, int itemId, decimal quantity, decimal amount, decimal discount);
         List<KeyValuePair<int, decimal>> ComputeOutputTax(int customerId, int itemId, decimal quantity, decimal amount, decimal discount);
+        /// <summary>Calculates customer taxes added to discounted invoice lines and shipping.</summary>
+        /// <param name="invoice">The invoice with tax-exclusive prices.</param>
+        /// <returns>Rounded tax components used for both preview and posting.</returns>
+        List<KeyValuePair<int, decimal>> ComputeSalesInvoiceTaxes(Core.Domain.Sales.SalesInvoiceHeader invoice);
         GeneralLedgerSetting GetGeneralLedgerSetting(int? companyId = null);
         void SaveGeneralLedgerSetting(GeneralLedgerSetting setting);
         void AddMainContraAccountSetting(int masterAccountId, int contraAccountId);

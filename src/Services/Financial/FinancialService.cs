@@ -512,26 +512,7 @@ namespace Services.Financial
         /// <returns></returns>
         public List<KeyValuePair<int, decimal>> ComputeInputTax(int vendorId, int itemId, decimal quantity, decimal amount, decimal discount)
         {
-            decimal taxAmount, amountXquantity, discountAmount = 0, subTotalAmount;
-
-            var taxes = new List<KeyValuePair<int, decimal>>();
-
-            amountXquantity = amount * quantity;
-
-            if (discount > 0)
-                discountAmount = (discount / 100) * amountXquantity;
-
-            subTotalAmount = amountXquantity - discountAmount;
-
-            var intersectionTaxes = _taxService.GetIntersectionTaxes(itemId, vendorId, PartyTypes.Vendor);
-
-            foreach (var tax in intersectionTaxes)
-            {
-                taxAmount = subTotalAmount - (subTotalAmount / (1 + (tax.Rate / 100)));
-                taxes.Add(new KeyValuePair<int, decimal>(tax.Id, taxAmount));
-            }
-
-            return taxes;
+            return _taxService.GetPurchaseTaxes(vendorId, itemId, quantity, amount, discount);
         }
 
         /// <summary>
@@ -544,6 +525,16 @@ namespace Services.Financial
         public List<KeyValuePair<int, decimal>> ComputeOutputTax(int customerId, int itemId, decimal quantity, decimal amount, decimal discount)
         {
             return _taxService.GetSalesTaxes(customerId, itemId, quantity, amount, discount);
+        }
+
+        /// <summary>Calculates customer taxes added to discounted invoice lines and shipping.</summary>
+        /// <param name="invoice">The invoice with tax-exclusive prices.</param>
+        /// <returns>Rounded tax components used for both preview and posting.</returns>
+        public List<KeyValuePair<int, decimal>> ComputeSalesInvoiceTaxes(SalesInvoiceHeader invoice)
+        {
+            var taxableAmount = invoice.SalesInvoiceLines.Sum(line =>
+                line.Quantity * line.Amount * (1 - line.Discount / 100)) + invoice.ShippingHandlingCharge;
+            return TaxCalculator.AddedTaxes(taxableAmount, _taxService.GetCustomerTaxes(invoice.CustomerId));
         }
 
         public GeneralLedgerSetting GetGeneralLedgerSetting(int? companyId = null)

@@ -125,7 +125,8 @@
                                 <div class="col-sm-4"><label class="form-label">Province</label></div>
                                 <div class="col-sm-8">
                                     <InputSelect class="form-control form-control-themed"
-                                                 @bind-Value="Model.CompanyAddress.Province" disabled="@(!isEditMode)">
+                                                 @bind-Value="Model.CompanyAddress.Province"
+                                                 @bind-Value:after="ApplyProvinceTaxGroupDefault" disabled="@(!isEditMode)">
                                         <option value="">-- Select Province/Territory --</option>
                                         @foreach (var province in CanadianProvincesAndTerritories)
                                         {
@@ -296,6 +297,7 @@
                                 </div>
                                 <div class="col-sm-8">
                                     <InputSelect class="form-control form-control-themed" @bind-Value="Model.TaxGroupId"
+                                                 @bind-Value:after="MarkTaxGroupSelected"
                                                  disabled="@(!isEditMode)">
                                         <option value="">-- Select Tax Group --</option>
                                         @foreach (var taxGroup in TaxGroups)
@@ -385,6 +387,8 @@
     private bool isLoading = true;
     private bool isEditMode = false;
     private string? errorMessage;
+    private bool taxGroupSelectedManually;
+    private int? defaultTaxGroupId;
 
     protected override async Task OnInitializedAsync()
     {
@@ -484,13 +488,21 @@
 
             // Load tax groups
             var taxGroupsResponse = await Http.GetAsync(baseApiUrl + "tax/taxgroups");
+            taxGroupsResponse.EnsureSuccessStatusCode();
             if (taxGroupsResponse.IsSuccessStatusCode)
             {
                 var taxGroups = await taxGroupsResponse.Content.ReadFromJsonAsync<List<Dto.TaxSystem.TaxGroup>>();
-                TaxGroups = taxGroups?
-                    .Where(tg => tg.IsActive && (tg.Description == "GST/HST" || tg.Description == "PST"))
-                    .Select(tg => new SelectListItem { Value = tg.Id.ToString(), Text = tg.Description! })
-                    .ToList() ?? new();
+                if (taxGroups == null)
+                    throw new System.Text.Json.JsonException("The tax groups response was empty.");
+                TaxGroups = taxGroups
+                    .OrderBy(tg => tg.Description)
+                    .Select(tg => new SelectListItem
+                    {
+                        Value = tg.Id.ToString(),
+                        Text = tg.Description + (tg.IsActive ? "" : " (inactive)"),
+                        IsActive = tg.IsActive
+                    }).ToList();
+                ApplyProvinceTaxGroupDefault();
             }
 
             // Load payment terms
@@ -541,6 +553,35 @@
         isEditMode = true;
     }
 
+    private void MarkTaxGroupSelected()
+    {
+        taxGroupSelectedManually = true;
+    }
+
+    private void ApplyProvinceTaxGroupDefault()
+    {
+        if (taxGroupSelectedManually || (Model.TaxGroupId.GetValueOrDefault() > 0 && Model.TaxGroupId != defaultTaxGroupId))
+            return;
+
+        var province = Model.CompanyAddress.Province?.Trim();
+        var provinceCode = CanadianProvincesAndTerritories.FirstOrDefault(p =>
+            string.Equals(p.Value, province, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(p.Text, province, StringComparison.OrdinalIgnoreCase))?.Value;
+        var match = provinceCode == null ? null : TaxGroups.FirstOrDefault(group =>
+            group.Text.StartsWith($"CA-{provinceCode} - ", StringComparison.OrdinalIgnoreCase) &&
+            group.IsActive);
+        if (match != null && int.TryParse(match.Value, out var groupId))
+        {
+            Model.TaxGroupId = groupId;
+            defaultTaxGroupId = groupId;
+        }
+        else if (defaultTaxGroupId.HasValue)
+        {
+            Model.TaxGroupId = null;
+            defaultTaxGroupId = null;
+        }
+    }
+
     private void CopyCompanyAddressToShipping()
     {
         Model.ShippingAddress.Street1 = Model.CompanyAddress.Street1;
@@ -568,6 +609,7 @@
     {
         public string Value { get; set; } = string.Empty;
         public string Text { get; set; } = string.Empty;
+        public bool IsActive { get; set; }
     }
 
     public class PaymentTermResponse

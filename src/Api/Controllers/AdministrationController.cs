@@ -25,13 +25,15 @@ namespace Api.Controllers
         private readonly IPurchasingService _purchasingService;
         private readonly IInventoryService _inventoryService;
         private readonly ISecurityService _securityService;
+        private readonly Data.ApiDbContext _context;
 
         public AdministrationController(IAdministrationService adminService,
             IFinancialService financialService,
             ISalesService salesService,
             IPurchasingService purchasingService,
             IInventoryService inventoryService,
-            ISecurityService securityService)
+            ISecurityService securityService,
+            Data.ApiDbContext context)
         {
             _adminService = adminService;
             _financialService = financialService;
@@ -39,13 +41,14 @@ namespace Api.Controllers
             _purchasingService = purchasingService;
             _inventoryService = inventoryService;
             _securityService = securityService;
+            _context = context;
         }
 
         [HttpGet]
         [Route("Setup")]
         public IActionResult Setup()
         {
-            Api.Data.Initializer initializer = new Data.Initializer(_adminService, _financialService, _salesService, _purchasingService, _inventoryService, _securityService);
+            Api.Data.Initializer initializer = new Data.Initializer(_adminService, _financialService, _salesService, _purchasingService, _inventoryService, _securityService, _context);
             bool success = initializer.Setup();
             if (success)
                 return Ok("{ 'message': 'Initialization completed!' }");
@@ -57,7 +60,7 @@ namespace Api.Controllers
         [Route("clear")]
         public IActionResult Clear()
         {
-            Api.Data.Initializer initializer = new Data.Initializer(_adminService, _financialService, _salesService, _purchasingService, _inventoryService, _securityService);
+            Api.Data.Initializer initializer = new Data.Initializer(_adminService, _financialService, _salesService, _purchasingService, _inventoryService, _securityService, _context);
             bool success = initializer.Clear();
             if (success)
                 return Ok("{ 'message': 'Database is cleared!' }");
