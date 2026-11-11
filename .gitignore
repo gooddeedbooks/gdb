@@ -4,6 +4,9 @@
 # custom 2024/04/29
 .idea
 
+# custom 2026/11/11
+global.json
+
 # User-specific files
 *.suo
 *.user
@@ -211,7 +214,6 @@ FakesAssemblies/
 /src/AccountGoWeb/project.lock.json
 /src/AccountGoWeb/project.fragment.lock.json
 /wrap/Dto/project.json
-/global.json
 .DS_Store
 /src/out
 
